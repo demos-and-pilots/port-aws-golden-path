@@ -1,5 +1,4 @@
-name: Deploy AWS Resource via CloudFormation
-
+name: deploy-aws-resource
 on:
   workflow_dispatch:
     inputs:
@@ -84,18 +83,18 @@ jobs:
 
       # ── 4. Configurar credenciales AWS via OIDC ──────────────────────────────
       # Opción A (recomendada): OIDC — sin access keys estáticas
-      - name: Configure AWS credentials (OIDC)
+      #- name: Configure AWS credentials (OIDC)
+      #  uses: aws-actions/configure-aws-credentials@v4
+      #  with:
+      #    role-to-assume:  arn:aws:iam::${{ steps.ctx.outputs.account_id }}:role/GitHubActionsDeployRole
+      #    aws-region:      ${{ steps.ctx.outputs.region }}
+        # Si no usas OIDC, comenta el bloque anterior y usa este:
+      - name: Configure AWS credentials (Access Keys)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume:  arn:aws:iam::${{ steps.ctx.outputs.account_id }}:role/GitHubActionsDeployRole
-          aws-region:      ${{ steps.ctx.outputs.region }}
-        # Si no usas OIDC, comenta el bloque anterior y usa este:
-        # - name: Configure AWS credentials (Access Keys)
-        #   uses: aws-actions/configure-aws-credentials@v4
-        #   with:
-        #     aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-        #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        #     aws-region:            ${{ steps.ctx.outputs.region }}
+           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+           aws-region:            ${{ steps.ctx.outputs.region }}
 
       # ── 5. Seleccionar y desplegar el template correcto ──────────────────────
       - name: Desplegar VPC
