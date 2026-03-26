@@ -111,19 +111,19 @@
     "integrationActionType": "dispatch_workflow",
     "integrationActionExecutionProperties": {
       "org": "demos-and-pilots",
-      "reportWorkflowStatus": true,
-      "workflowInputs": {
-      "port_context": {
-        "runId":        "{{ .run.id }}",
-        "blueprint":    "aws_resource",
-        "inputs":       "{{ .inputs }}",
-        "resourceType": "DynamoDB"
-      }
-    },
       "repo": "port-aws-golden-path",
-      "workflow": "deploy-aws-resource.yml"
+      "workflow": "deploy-aws-resource",
+      "workflowInputs": {
+        "port_context": {
+          "runId": "{{ .run.id }}",
+          "blueprint": "aws_resource",
+          "inputs": "{{ .inputs }}",
+          "resourceType": "DynamoDB"
+        }
+      },
+      "reportWorkflowStatus": true
     }
   },
-  "requiredApproval": false,
-  "allowAnyoneToViewRuns": true
+  "allowAnyoneToViewRuns": true,
+  "requiredApproval": false
 }
