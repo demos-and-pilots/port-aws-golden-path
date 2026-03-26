@@ -157,7 +157,7 @@ jobs:
             --template-file cloudformation/dynamodb/dynamodb.yml \
             --stack-name "${STACK_NAME}" \
             --region "${{ steps.ctx.outputs.region }}" \
-            --capabilities CAPABILITY_IAM \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --parameter-overrides $PARAMS \
             --tags \
               Project="${{ steps.ctx.outputs.project_name }}" \
