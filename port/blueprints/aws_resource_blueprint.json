@@ -1,0 +1,104 @@
+{
+  "identifier": "aws_resource",
+  "title": "AWS Resource",
+  "icon": "AWS",
+  "description": "Recurso de infraestructura desplegado en AWS via CloudFormation. Generado desde el Golden Path de Platform Engineering.",
+  "schema": {
+    "properties": {
+      "resourceType": {
+        "type": "string",
+        "title": "Tipo de recurso",
+        "enum": ["VPC", "DynamoDB", "Lambda", "VPC+DynamoDB+Lambda"],
+        "enumColors": {
+          "VPC":                  "blue",
+          "DynamoDB":             "green",
+          "Lambda":               "yellow",
+          "VPC+DynamoDB+Lambda":  "purple"
+        }
+      },
+      "awsAccountId": {
+        "type": "string",
+        "title": "AWS Account ID"
+      },
+      "awsRegion": {
+        "type": "string",
+        "title": "Región AWS",
+        "enum": [
+          "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+          "eu-west-1", "eu-west-2", "eu-central-1",
+          "ap-southeast-1", "ap-southeast-2", "sa-east-1"
+        ]
+      },
+      "availabilityZones": {
+        "type": "string",
+        "title": "Availability Zones",
+        "description": "Ej: us-east-1a,us-east-1b"
+      },
+      "environment": {
+        "type": "string",
+        "title": "Entorno",
+        "enum": ["dev", "staging", "prod"],
+        "enumColors": {
+          "dev":     "green",
+          "staging": "yellow",
+          "prod":    "red"
+        }
+      },
+      "stackName": {
+        "type": "string",
+        "title": "Nombre del Stack CloudFormation"
+      },
+      "stackId": {
+        "type": "string",
+        "title": "Stack ID (ARN)",
+        "format": "url"
+      },
+      "stackStatus": {
+        "type": "string",
+        "title": "Estado del Stack",
+        "enum": [
+          "CREATE_IN_PROGRESS", "CREATE_COMPLETE", "CREATE_FAILED",
+          "UPDATE_IN_PROGRESS", "UPDATE_COMPLETE", "DELETE_IN_PROGRESS",
+          "ROLLBACK_IN_PROGRESS", "ROLLBACK_COMPLETE"
+        ],
+        "enumColors": {
+          "CREATE_IN_PROGRESS":   "yellow",
+          "CREATE_COMPLETE":      "green",
+          "CREATE_FAILED":        "red",
+          "UPDATE_IN_PROGRESS":   "yellow",
+          "UPDATE_COMPLETE":      "green",
+          "DELETE_IN_PROGRESS":   "orange",
+          "ROLLBACK_IN_PROGRESS": "orange",
+          "ROLLBACK_COMPLETE":    "red"
+        }
+      },
+      "ownerTeam": {
+        "type": "string",
+        "title": "Equipo responsable"
+      },
+      "costCenter": {
+        "type": "string",
+        "title": "Centro de costos"
+      },
+      "consoleUrl": {
+        "type": "string",
+        "title": "AWS Console URL",
+        "format": "url"
+      },
+      "githubRunUrl": {
+        "type": "string",
+        "title": "GitHub Actions Run",
+        "format": "url"
+      },
+      "createdAt": {
+        "type": "string",
+        "title": "Fecha de creación",
+        "format": "date-time"
+      }
+    },
+    "required": ["resourceType", "awsAccountId", "awsRegion", "environment", "ownerTeam"]
+  },
+  "mirrorProperties": {},
+  "calculationProperties": {},
+  "relations": {}
+}

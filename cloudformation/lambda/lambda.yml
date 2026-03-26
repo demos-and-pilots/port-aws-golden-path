@@ -1,0 +1,278 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Golden Path — Lambda Function con IAM Role, configuración de VPC,
+  Security Group propio, Dead-Letter Queue opcional y variables de entorno.
+  Generado por Port Platform Engineering.
+
+Parameters:
+
+  ProjectName:
+    Type: String
+    MinLength: 3
+    MaxLength: 50
+    AllowedPattern: "^[a-z][a-z0-9-]+$"
+
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+    Default: dev
+
+  Runtime:
+    Type: String
+    AllowedValues:
+      - python3.12
+      - python3.11
+      - python3.10
+      - nodejs20.x
+      - nodejs18.x
+      - java21
+      - java17
+      - java11
+      - dotnet8
+      - provided.al2023
+    Default: python3.12
+
+  Handler:
+    Type: String
+    Description: "Ej: lambda_function.lambda_handler (Python), index.handler (Node)"
+    Default: lambda_function.lambda_handler
+
+  MemorySize:
+    Type: Number
+    Default: 256
+    AllowedValues: [128, 256, 512, 1024, 2048, 3008, 4096, 8192, 10240]
+
+  Timeout:
+    Type: Number
+    Description: Segundos — máximo 900
+    Default: 30
+    MinValue: 1
+    MaxValue: 900
+
+  S3Bucket:
+    Type: String
+    Description: Bucket S3 que contiene el deployment package (.zip)
+
+  S3Key:
+    Type: String
+    Description: Path al .zip dentro del bucket
+    Default: releases/function.zip
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC donde se desplegará la Lambda
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets PRIVADAS de la VPC (separadas por coma)
+
+  EnableDlq:
+    Type: String
+    Description: Habilitar Dead-Letter Queue para captura de errores
+    AllowedValues: ["true", "false"]
+    Default: "false"
+
+  EnvVars:
+    Type: String
+    Description: "Variables de entorno en formato KEY=VALUE,KEY2=VALUE2"
+    Default: ""
+
+# ─────────────────────────────────────────────────────────────────────────────
+Conditions:
+  CreateDlq:    !Equals [!Ref EnableDlq, "true"]
+  HasEnvVars:   !Not [!Equals [!Ref EnvVars, ""]]
+
+# ─────────────────────────────────────────────────────────────────────────────
+Resources:
+
+  # ── Dead-Letter Queue (opcional) ────────────────────────────────────────────
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Condition: CreateDlq
+    Properties:
+      QueueName: !Sub "${ProjectName}-${Environment}-dlq"
+      MessageRetentionPeriod: 1209600    # 14 días
+      KmsMasterKeyId: alias/aws/sqs
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: port-golden-path
+
+  # ── Security Group para la Lambda ───────────────────────────────────────────
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "Security Group para Lambda ${ProjectName}-${Environment}"
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+          Description: "Salida irrestricta (para llamadas a DynamoDB, S3, APIs)"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-lambda-sg"
+
+  # ── IAM Role de la Lambda ────────────────────────────────────────────────────
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${Environment}-lambda-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        # Permisos base para Lambda en VPC (crear ENIs)
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        # CloudWatch Logs
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaCustomPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Leer el código desde S3
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: !Sub "arn:aws:s3:::${S3Bucket}/*"
+              # Acceso a X-Ray para trazabilidad
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: "*"
+              # DLQ — solo si está habilitada
+              - !If
+                - CreateDlq
+                - Effect: Allow
+                  Action:
+                    - sqs:SendMessage
+                  Resource: !GetAtt DeadLetterQueue.Arn
+                - !Ref AWS::NoValue
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: port-golden-path
+
+  # ── Log Group (creado explícitamente para control de retención) ───────────
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ProjectName}-${Environment}"
+      RetentionInDays: !If
+        - !Equals [!Ref Environment, prod]
+        - 90
+        - 14
+
+  # ── Lambda Function ──────────────────────────────────────────────────────────
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: LambdaLogGroup
+    Properties:
+      FunctionName: !Sub "${ProjectName}-${Environment}"
+      Description: !Sub "Función Lambda ${ProjectName} en entorno ${Environment}. Golden Path — Port."
+      Runtime: !Ref Runtime
+      Handler: !Ref Handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      MemorySize: !Ref MemorySize
+      Timeout: !Ref Timeout
+
+      # ── Código desde S3 ────────────────────────────────────────────────────
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !Ref S3Key
+
+      # ── Configuración de VPC ────────────────────────────────────────────────
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds: !Ref SubnetIds
+
+      # ── Variables de entorno ────────────────────────────────────────────────
+      # Las variables del usuario se pasan externamente via parameter store
+      # o directamente como parámetro. Se añaden las variables del sistema aquí.
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          PROJECT_NAME: !Ref ProjectName
+          AWS_ACCOUNT_ID: !Ref AWS::AccountId
+          LOG_LEVEL: !If [!Equals [!Ref Environment, prod], "WARNING", "INFO"]
+
+      # ── Dead-Letter Queue ────────────────────────────────────────────────────
+      DeadLetterConfig: !If
+        - CreateDlq
+        - TargetArn: !GetAtt DeadLetterQueue.Arn
+        - !Ref AWS::NoValue
+
+      # ── Trazabilidad con X-Ray ───────────────────────────────────────────────
+      TracingConfig:
+        Mode: Active
+
+      # ── Arquitectura ─────────────────────────────────────────────────────────
+      Architectures:
+        - x86_64
+
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        ManagedBy: port-golden-path
+
+  # ── Permisos para que EventBridge / API Gateway invoquen la Lambda ─────────
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt LambdaFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+
+# ─────────────────────────────────────────────────────────────────────────────
+Outputs:
+
+  LambdaFunctionName:
+    Description: Nombre de la Lambda Function
+    Value: !Ref LambdaFunction
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-LambdaName"
+
+  LambdaFunctionArn:
+    Description: ARN de la Lambda Function
+    Value: !GetAtt LambdaFunction.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-LambdaArn"
+
+  LambdaRoleArn:
+    Description: ARN del IAM Role de la Lambda
+    Value: !GetAtt LambdaExecutionRole.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-LambdaRoleArn"
+
+  LambdaSecurityGroupId:
+    Description: ID del Security Group de la Lambda
+    Value: !Ref LambdaSecurityGroup
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-LambdaSgId"
+
+  DeadLetterQueueUrl:
+    Condition: CreateDlq
+    Description: URL de la Dead-Letter Queue
+    Value: !Ref DeadLetterQueue
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-DlqUrl"
+
+  LogGroupName:
+    Description: Nombre del Log Group en CloudWatch
+    Value: !Ref LambdaLogGroup
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-LogGroup"

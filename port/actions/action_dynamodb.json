@@ -1,0 +1,127 @@
+{
+  "identifier": "deploy_aws_dynamodb",
+  "title": "Desplegar DynamoDB en AWS",
+  "icon": "AWS",
+  "description": "Crea una tabla DynamoDB con configuración de capacidad, índices secundarios, TTL, Point-in-Time Recovery y encriptación. Solo configura variables — el CloudFormation se genera automáticamente.",
+  "trigger": {
+    "type": "self-service",
+    "operation": "CREATE",
+    "userInputs": {
+      "properties": {
+        "awsAccountId": {
+          "type": "string",
+          "title": "AWS Account ID",
+          "pattern": "^[0-9]{12}$"
+        },
+        "awsRegion": {
+          "type": "string",
+          "title": "Región AWS",
+          "enum": [
+            "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+            "eu-west-1", "eu-west-2", "eu-central-1",
+            "ap-southeast-1", "ap-southeast-2", "sa-east-1"
+          ],
+          "default": "us-east-1"
+        },
+        "environment": {
+          "type": "string",
+          "title": "Entorno",
+          "enum": ["dev", "staging", "prod"],
+          "default": "dev"
+        },
+        "projectName": {
+          "type": "string",
+          "title": "Nombre del proyecto / tabla",
+          "pattern": "^[a-z][a-z0-9-]{2,28}$"
+        },
+        "partitionKey": {
+          "type": "string",
+          "title": "Partition Key (Hash Key)",
+          "description": "Nombre del atributo que actúa como llave de partición",
+          "default": "id"
+        },
+        "partitionKeyType": {
+          "type": "string",
+          "title": "Tipo del Partition Key",
+          "enum": ["S", "N", "B"],
+          "enumNames": ["String (S)", "Number (N)", "Binary (B)"],
+          "default": "S"
+        },
+        "sortKey": {
+          "type": "string",
+          "title": "Sort Key (Range Key) — opcional",
+          "description": "Dejar vacío si no se requiere sort key"
+        },
+        "sortKeyType": {
+          "type": "string",
+          "title": "Tipo del Sort Key",
+          "enum": ["S", "N", "B"],
+          "default": "S"
+        },
+        "billingMode": {
+          "type": "string",
+          "title": "Modo de facturación",
+          "enum": ["PAY_PER_REQUEST", "PROVISIONED"],
+          "enumNames": [
+            "On-Demand — paga por request (recomendado para dev)",
+            "Provisioned — capacidad fija (recomendado para prod con tráfico predecible)"
+          ],
+          "default": "PAY_PER_REQUEST"
+        },
+        "readCapacity": {
+          "type": "number",
+          "title": "Read Capacity Units (solo si Provisioned)",
+          "description": "Ignorado en modo On-Demand",
+          "default": 5
+        },
+        "writeCapacity": {
+          "type": "number",
+          "title": "Write Capacity Units (solo si Provisioned)",
+          "default": 5
+        },
+        "enablePitr": {
+          "type": "boolean",
+          "title": "Habilitar Point-in-Time Recovery",
+          "description": "Permite restaurar la tabla a cualquier segundo de los últimos 35 días",
+          "default": true
+        },
+        "enableTtl": {
+          "type": "boolean",
+          "title": "Habilitar TTL (Time-To-Live)",
+          "description": "Elimina automáticamente items expirados",
+          "default": false
+        },
+        "ttlAttribute": {
+          "type": "string",
+          "title": "Atributo TTL",
+          "description": "Nombre del atributo que contiene el timestamp de expiración (Unix epoch)",
+          "default": "expiresAt"
+        },
+        "ownerTeam": {
+          "type": "string",
+          "title": "Equipo responsable"
+        },
+        "costCenter": {
+          "type": "string",
+          "title": "Centro de costos"
+        }
+      },
+      "required": ["awsAccountId", "awsRegion", "projectName", "environment", "partitionKey", "ownerTeam"]
+    }
+  },
+  "invocationMethod": {
+    "type": "GITHUB",
+    "org": "TU_ORG_GITHUB",
+    "repo": "port-aws-golden-path",
+    "workflow": "deploy-aws-resource.yml",
+    "workflowInputs": {
+      "port_context": {
+        "runId":        "{{ .run.id }}",
+        "blueprint":    "aws_resource",
+        "inputs":       "{{ .inputs }}",
+        "resourceType": "DynamoDB"
+      }
+    },
+    "reportWorkflowStatus": true
+  }
+}

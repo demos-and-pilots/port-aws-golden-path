@@ -1,0 +1,316 @@
+name: Deploy AWS Resource via CloudFormation
+
+on:
+  workflow_dispatch:
+    inputs:
+      port_context:
+        required: true
+        description: "JSON payload enviado por Port (runId + inputs + resourceType)"
+        type: string
+
+permissions:
+  id-token: write   # Para OIDC con AWS (recomendado sobre access keys)
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_DEFAULT_OUTPUT: json
+
+    steps:
+      # ── 1. Parsear contexto de Port ─────────────────────────────────────────
+      - name: Parsear inputs de Port
+        id: ctx
+        run: |
+          INPUTS=$(echo '${{ inputs.port_context }}' | jq -r '.inputs')
+          RESOURCE_TYPE=$(echo '${{ inputs.port_context }}' | jq -r '.resourceType')
+          RUN_ID=$(echo '${{ inputs.port_context }}' | jq -r '.runId')
+
+          echo "resource_type=${RESOURCE_TYPE}"            >> $GITHUB_OUTPUT
+          echo "run_id=${RUN_ID}"                          >> $GITHUB_OUTPUT
+          echo "account_id=$(echo $INPUTS | jq -r '.awsAccountId')"         >> $GITHUB_OUTPUT
+          echo "region=$(echo $INPUTS | jq -r '.awsRegion')"                >> $GITHUB_OUTPUT
+          echo "environment=$(echo $INPUTS | jq -r '.environment')"         >> $GITHUB_OUTPUT
+          echo "project_name=$(echo $INPUTS | jq -r '.projectName')"        >> $GITHUB_OUTPUT
+          echo "owner_team=$(echo $INPUTS | jq -r '.ownerTeam')"            >> $GITHUB_OUTPUT
+          echo "cost_center=$(echo $INPUTS | jq -r '.costCenter // \"N/A\"')" >> $GITHUB_OUTPUT
+
+          # VPC-specific
+          echo "vpc_cidr=$(echo $INPUTS | jq -r '.vpcCidr // \"10.0.0.0/16\"')"          >> $GITHUB_OUTPUT
+          echo "az1=$(echo $INPUTS | jq -r '.availabilityZone1 // \"us-east-1a\"')"       >> $GITHUB_OUTPUT
+          echo "az2=$(echo $INPUTS | jq -r '.availabilityZone2 // \"us-east-1b\"')"       >> $GITHUB_OUTPUT
+          echo "nat_gw=$(echo $INPUTS | jq -r '.enableNatGateway // false')"              >> $GITHUB_OUTPUT
+
+          # DynamoDB-specific
+          echo "dynamo_pk=$(echo $INPUTS | jq -r '.partitionKey // .dynamoPartitionKey // \"id\"')" >> $GITHUB_OUTPUT
+          echo "dynamo_pk_type=$(echo $INPUTS | jq -r '.partitionKeyType // \"S\"')"      >> $GITHUB_OUTPUT
+          echo "dynamo_sk=$(echo $INPUTS | jq -r '.sortKey // \"\"')"                     >> $GITHUB_OUTPUT
+          echo "dynamo_sk_type=$(echo $INPUTS | jq -r '.sortKeyType // \"S\"')"           >> $GITHUB_OUTPUT
+          echo "billing_mode=$(echo $INPUTS | jq -r '.billingMode // \"PAY_PER_REQUEST\"')" >> $GITHUB_OUTPUT
+          echo "read_capacity=$(echo $INPUTS | jq -r '.readCapacity // 5')"               >> $GITHUB_OUTPUT
+          echo "write_capacity=$(echo $INPUTS | jq -r '.writeCapacity // 5')"             >> $GITHUB_OUTPUT
+          echo "enable_pitr=$(echo $INPUTS | jq -r '.enablePitr // true')"                >> $GITHUB_OUTPUT
+          echo "enable_ttl=$(echo $INPUTS | jq -r '.enableTtl // false')"                 >> $GITHUB_OUTPUT
+          echo "ttl_attr=$(echo $INPUTS | jq -r '.ttlAttribute // \"expiresAt\"')"        >> $GITHUB_OUTPUT
+
+          # Lambda-specific
+          echo "lambda_runtime=$(echo $INPUTS | jq -r '.runtime // .lambdaRuntime // \"python3.12\"')"       >> $GITHUB_OUTPUT
+          echo "lambda_handler=$(echo $INPUTS | jq -r '.handler // .lambdaHandler // \"lambda_function.lambda_handler\"')" >> $GITHUB_OUTPUT
+          echo "lambda_memory=$(echo $INPUTS | jq -r '.memorySizeMb // .lambdaMemoryMb // 256')"             >> $GITHUB_OUTPUT
+          echo "lambda_timeout=$(echo $INPUTS | jq -r '.timeoutSeconds // .lambdaTimeoutSeconds // 30')"     >> $GITHUB_OUTPUT
+          echo "s3_bucket=$(echo $INPUTS | jq -r '.s3BucketCode')"                        >> $GITHUB_OUTPUT
+          echo "s3_key=$(echo $INPUTS | jq -r '.s3KeyCode // \"releases/function.zip\"')" >> $GITHUB_OUTPUT
+          echo "vpc_id=$(echo $INPUTS | jq -r '.vpcId // \"\"')"                          >> $GITHUB_OUTPUT
+          echo "subnet_ids=$(echo $INPUTS | jq -r '.subnetIds // \"\"')"                  >> $GITHUB_OUTPUT
+          echo "enable_dlq=$(echo $INPUTS | jq -r '.enableDlq // false')"                 >> $GITHUB_OUTPUT
+          echo "env_vars=$(echo $INPUTS | jq -r '.envVars // \"\"')"                      >> $GITHUB_OUTPUT
+
+      # ── 2. Notificar inicio a Port ───────────────────────────────────────────
+      - name: Notificar inicio a Port
+        uses: port-labs/port-github-action@v1
+        with:
+          clientId:     ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          baseUrl:      https://api.getport.io
+          operation:    PATCH_RUN
+          runId:        ${{ steps.ctx.outputs.run_id }}
+          logMessage:   "Iniciando despliegue de ${{ steps.ctx.outputs.resource_type }} en cuenta ${{ steps.ctx.outputs.account_id }} / región ${{ steps.ctx.outputs.region }}..."
+          status:       "IN_PROGRESS"
+
+      # ── 3. Checkout del repo (templates CloudFormation) ─────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 4. Configurar credenciales AWS via OIDC ──────────────────────────────
+      # Opción A (recomendada): OIDC — sin access keys estáticas
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume:  arn:aws:iam::${{ steps.ctx.outputs.account_id }}:role/GitHubActionsDeployRole
+          aws-region:      ${{ steps.ctx.outputs.region }}
+        # Si no usas OIDC, comenta el bloque anterior y usa este:
+        # - name: Configure AWS credentials (Access Keys)
+        #   uses: aws-actions/configure-aws-credentials@v4
+        #   with:
+        #     aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+        #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        #     aws-region:            ${{ steps.ctx.outputs.region }}
+
+      # ── 5. Seleccionar y desplegar el template correcto ──────────────────────
+      - name: Desplegar VPC
+        if: steps.ctx.outputs.resource_type == 'VPC'
+        id: deploy_vpc
+        run: |
+          STACK_NAME="${{ steps.ctx.outputs.project_name }}-${{ steps.ctx.outputs.environment }}-vpc"
+          echo "stack_name=${STACK_NAME}" >> $GITHUB_OUTPUT
+
+          aws cloudformation deploy \
+            --template-file cloudformation/vpc/vpc.yml \
+            --stack-name "${STACK_NAME}" \
+            --region "${{ steps.ctx.outputs.region }}" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              ProjectName="${{ steps.ctx.outputs.project_name }}" \
+              Environment="${{ steps.ctx.outputs.environment }}" \
+              VpcCidr="${{ steps.ctx.outputs.vpc_cidr }}" \
+              AvailabilityZone1="${{ steps.ctx.outputs.az1 }}" \
+              AvailabilityZone2="${{ steps.ctx.outputs.az2 }}" \
+              EnableNatGateway="${{ steps.ctx.outputs.nat_gw }}" \
+            --tags \
+              Project="${{ steps.ctx.outputs.project_name }}" \
+              Environment="${{ steps.ctx.outputs.environment }}" \
+              OwnerTeam="${{ steps.ctx.outputs.owner_team }}" \
+              CostCenter="${{ steps.ctx.outputs.cost_center }}" \
+              ManagedBy="port-golden-path" \
+              CreatedAt="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          STACK_ID=$(aws cloudformation describe-stacks \
+            --stack-name "${STACK_NAME}" \
+            --query 'Stacks[0].StackId' --output text)
+          echo "stack_id=${STACK_ID}" >> $GITHUB_OUTPUT
+
+      - name: Desplegar DynamoDB
+        if: steps.ctx.outputs.resource_type == 'DynamoDB'
+        id: deploy_dynamodb
+        run: |
+          STACK_NAME="${{ steps.ctx.outputs.project_name }}-${{ steps.ctx.outputs.environment }}-dynamo"
+          echo "stack_name=${STACK_NAME}" >> $GITHUB_OUTPUT
+
+          # Parámetros base
+          PARAMS="ProjectName=${{ steps.ctx.outputs.project_name }} \
+                  Environment=${{ steps.ctx.outputs.environment }} \
+                  PartitionKey=${{ steps.ctx.outputs.dynamo_pk }} \
+                  PartitionKeyType=${{ steps.ctx.outputs.dynamo_pk_type }} \
+                  BillingMode=${{ steps.ctx.outputs.billing_mode }} \
+                  ReadCapacity=${{ steps.ctx.outputs.read_capacity }} \
+                  WriteCapacity=${{ steps.ctx.outputs.write_capacity }} \
+                  EnablePitr=${{ steps.ctx.outputs.enable_pitr }} \
+                  EnableTtl=${{ steps.ctx.outputs.enable_ttl }} \
+                  TtlAttribute=${{ steps.ctx.outputs.ttl_attr }}"
+
+          # Agregar sort key solo si fue especificada
+          if [ -n "${{ steps.ctx.outputs.dynamo_sk }}" ]; then
+            PARAMS="${PARAMS} SortKey=${{ steps.ctx.outputs.dynamo_sk }} SortKeyType=${{ steps.ctx.outputs.dynamo_sk_type }}"
+          fi
+
+          aws cloudformation deploy \
+            --template-file cloudformation/dynamodb/dynamodb.yml \
+            --stack-name "${STACK_NAME}" \
+            --region "${{ steps.ctx.outputs.region }}" \
+            --capabilities CAPABILITY_IAM \
+            --parameter-overrides $PARAMS \
+            --tags \
+              Project="${{ steps.ctx.outputs.project_name }}" \
+              Environment="${{ steps.ctx.outputs.environment }}" \
+              OwnerTeam="${{ steps.ctx.outputs.owner_team }}" \
+              CostCenter="${{ steps.ctx.outputs.cost_center }}" \
+              ManagedBy="port-golden-path"
+
+          STACK_ID=$(aws cloudformation describe-stacks \
+            --stack-name "${STACK_NAME}" \
+            --query 'Stacks[0].StackId' --output text)
+          echo "stack_id=${STACK_ID}" >> $GITHUB_OUTPUT
+
+      - name: Desplegar Lambda en VPC
+        if: steps.ctx.outputs.resource_type == 'Lambda'
+        id: deploy_lambda
+        run: |
+          STACK_NAME="${{ steps.ctx.outputs.project_name }}-${{ steps.ctx.outputs.environment }}-lambda"
+          echo "stack_name=${STACK_NAME}" >> $GITHUB_OUTPUT
+
+          # Convertir env vars de formato KEY=VAL,KEY2=VAL2 a formato CFN
+          ENV_VARS_CFN=""
+          if [ -n "${{ steps.ctx.outputs.env_vars }}" ]; then
+            ENV_VARS_CFN="${{ steps.ctx.outputs.env_vars }}"
+          fi
+
+          aws cloudformation deploy \
+            --template-file cloudformation/lambda/lambda.yml \
+            --stack-name "${STACK_NAME}" \
+            --region "${{ steps.ctx.outputs.region }}" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              ProjectName="${{ steps.ctx.outputs.project_name }}" \
+              Environment="${{ steps.ctx.outputs.environment }}" \
+              Runtime="${{ steps.ctx.outputs.lambda_runtime }}" \
+              Handler="${{ steps.ctx.outputs.lambda_handler }}" \
+              MemorySize="${{ steps.ctx.outputs.lambda_memory }}" \
+              Timeout="${{ steps.ctx.outputs.lambda_timeout }}" \
+              S3Bucket="${{ steps.ctx.outputs.s3_bucket }}" \
+              S3Key="${{ steps.ctx.outputs.s3_key }}" \
+              VpcId="${{ steps.ctx.outputs.vpc_id }}" \
+              SubnetIds="${{ steps.ctx.outputs.subnet_ids }}" \
+              EnableDlq="${{ steps.ctx.outputs.enable_dlq }}" \
+              EnvVars="${ENV_VARS_CFN}" \
+            --tags \
+              Project="${{ steps.ctx.outputs.project_name }}" \
+              Environment="${{ steps.ctx.outputs.environment }}" \
+              OwnerTeam="${{ steps.ctx.outputs.owner_team }}" \
+              CostCenter="${{ steps.ctx.outputs.cost_center }}" \
+              ManagedBy="port-golden-path"
+
+          STACK_ID=$(aws cloudformation describe-stacks \
+            --stack-name "${STACK_NAME}" \
+            --query 'Stacks[0].StackId' --output text)
+          echo "stack_id=${STACK_ID}" >> $GITHUB_OUTPUT
+
+      - name: Desplegar Stack Completo (VPC + DynamoDB + Lambda)
+        if: steps.ctx.outputs.resource_type == 'VPC+DynamoDB+Lambda'
+        id: deploy_complete
+        run: |
+          STACK_NAME="${{ steps.ctx.outputs.project_name }}-${{ steps.ctx.outputs.environment }}-complete"
+          echo "stack_name=${STACK_NAME}" >> $GITHUB_OUTPUT
+
+          aws cloudformation deploy \
+            --template-file cloudformation/complete/complete-stack.yml \
+            --stack-name "${STACK_NAME}" \
+            --region "${{ steps.ctx.outputs.region }}" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              ProjectName="${{ steps.ctx.outputs.project_name }}" \
+              Environment="${{ steps.ctx.outputs.environment }}" \
+              VpcCidr="${{ steps.ctx.outputs.vpc_cidr }}" \
+              AvailabilityZone1="${{ steps.ctx.outputs.az1 }}" \
+              AvailabilityZone2="${{ steps.ctx.outputs.az2 }}" \
+              EnableNatGateway="${{ steps.ctx.outputs.nat_gw }}" \
+              DynamoPartitionKey="${{ steps.ctx.outputs.dynamo_pk }}" \
+              EnablePitr="${{ steps.ctx.outputs.enable_pitr }}" \
+              LambdaRuntime="${{ steps.ctx.outputs.lambda_runtime }}" \
+              LambdaHandler="${{ steps.ctx.outputs.lambda_handler }}" \
+              LambdaMemorySize="${{ steps.ctx.outputs.lambda_memory }}" \
+              LambdaTimeout="${{ steps.ctx.outputs.lambda_timeout }}" \
+              S3Bucket="${{ steps.ctx.outputs.s3_bucket }}" \
+              S3Key="${{ steps.ctx.outputs.s3_key }}" \
+            --tags \
+              Project="${{ steps.ctx.outputs.project_name }}" \
+              Environment="${{ steps.ctx.outputs.environment }}" \
+              OwnerTeam="${{ steps.ctx.outputs.owner_team }}" \
+              CostCenter="${{ steps.ctx.outputs.cost_center }}" \
+              ManagedBy="port-golden-path"
+
+          STACK_ID=$(aws cloudformation describe-stacks \
+            --stack-name "${STACK_NAME}" \
+            --query 'Stacks[0].StackId' --output text)
+          echo "stack_id=${STACK_ID}" >> $GITHUB_OUTPUT
+
+      # ── 6. Resolver stack_name y stack_id para el paso de notificación ───────
+      - name: Resolver outputs del deploy
+        id: resolve
+        if: always()
+        run: |
+          # Tomar el stack_name del step que corrió
+          STACK_NAME="${{ steps.deploy_vpc.outputs.stack_name }}${{ steps.deploy_dynamodb.outputs.stack_name }}${{ steps.deploy_lambda.outputs.stack_name }}${{ steps.deploy_complete.outputs.stack_name }}"
+          STACK_ID="${{ steps.deploy_vpc.outputs.stack_id }}${{ steps.deploy_dynamodb.outputs.stack_id }}${{ steps.deploy_lambda.outputs.stack_id }}${{ steps.deploy_complete.outputs.stack_id }}"
+          echo "stack_name=${STACK_NAME}" >> $GITHUB_OUTPUT
+          echo "stack_id=${STACK_ID}"     >> $GITHUB_OUTPUT
+          CONSOLE_URL="https://${{ steps.ctx.outputs.region }}.console.aws.amazon.com/cloudformation/home?region=${{ steps.ctx.outputs.region }}#/stacks/stackinfo?stackId=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${STACK_ID}")"
+          echo "console_url=${CONSOLE_URL}" >> $GITHUB_OUTPUT
+
+      # ── 7. Notificar éxito a Port + actualizar catálogo ──────────────────────
+      - name: Notificar éxito y registrar en catálogo de Port
+        if: success()
+        uses: port-labs/port-github-action@v1
+        with:
+          clientId:     ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          baseUrl:      https://api.getport.io
+          operation:    PATCH_RUN
+          runId:        ${{ steps.ctx.outputs.run_id }}
+          logMessage:   "Stack desplegado exitosamente: ${{ steps.resolve.outputs.stack_name }}"
+          status:       "SUCCESS"
+          link:         '["${{ steps.resolve.outputs.console_url }}", "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"]'
+          entityType:   aws_resource
+          entity: >
+            {
+              "identifier": "${{ steps.ctx.outputs.project_name }}-${{ steps.ctx.outputs.environment }}",
+              "title":      "${{ steps.ctx.outputs.project_name }} (${{ steps.ctx.outputs.environment }})",
+              "properties": {
+                "resourceType":  "${{ steps.ctx.outputs.resource_type }}",
+                "awsAccountId":  "${{ steps.ctx.outputs.account_id }}",
+                "awsRegion":     "${{ steps.ctx.outputs.region }}",
+                "environment":   "${{ steps.ctx.outputs.environment }}",
+                "stackName":     "${{ steps.resolve.outputs.stack_name }}",
+                "stackId":       "${{ steps.resolve.outputs.stack_id }}",
+                "stackStatus":   "CREATE_COMPLETE",
+                "ownerTeam":     "${{ steps.ctx.outputs.owner_team }}",
+                "costCenter":    "${{ steps.ctx.outputs.cost_center }}",
+                "consoleUrl":    "${{ steps.resolve.outputs.console_url }}",
+                "githubRunUrl":  "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                "createdAt":     "${{ github.run_started_at }}"
+              }
+            }
+
+      # ── 8. Notificar falla a Port ─────────────────────────────────────────────
+      - name: Notificar falla a Port
+        if: failure()
+        uses: port-labs/port-github-action@v1
+        with:
+          clientId:     ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          baseUrl:      https://api.getport.io
+          operation:    PATCH_RUN
+          runId:        ${{ steps.ctx.outputs.run_id }}
+          logMessage:   "Fallo al desplegar ${{ steps.ctx.outputs.resource_type }}. Revisa los logs en GitHub Actions."
+          status:       "FAILURE"
+          link:         '["${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"]'

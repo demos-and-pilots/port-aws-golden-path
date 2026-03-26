@@ -1,0 +1,131 @@
+{
+  "identifier": "deploy_aws_complete_stack",
+  "title": "Desplegar Stack Completo AWS (VPC + DynamoDB + Lambda)",
+  "icon": "AWS",
+  "description": "Golden Path completo: crea una VPC con subnets, una tabla DynamoDB y una Lambda Function dentro de esa VPC, todo en un solo stack de CloudFormation. El stack completo está listo para ejecutar en ~5 minutos.",
+  "trigger": {
+    "type": "self-service",
+    "operation": "CREATE",
+    "userInputs": {
+      "properties": {
+        "awsAccountId": {
+          "type": "string",
+          "title": "AWS Account ID",
+          "pattern": "^[0-9]{12}$"
+        },
+        "awsRegion": {
+          "type": "string",
+          "title": "Región AWS",
+          "enum": [
+            "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+            "eu-west-1", "eu-west-2", "eu-central-1",
+            "ap-southeast-1", "ap-southeast-2", "sa-east-1"
+          ],
+          "default": "us-east-1"
+        },
+        "availabilityZone1": {
+          "type": "string",
+          "title": "Availability Zone 1",
+          "default": "us-east-1a"
+        },
+        "availabilityZone2": {
+          "type": "string",
+          "title": "Availability Zone 2",
+          "default": "us-east-1b"
+        },
+        "environment": {
+          "type": "string",
+          "title": "Entorno",
+          "enum": ["dev", "staging", "prod"],
+          "default": "dev"
+        },
+        "projectName": {
+          "type": "string",
+          "title": "Nombre del proyecto",
+          "description": "Prefijo para todos los recursos del stack",
+          "pattern": "^[a-z][a-z0-9-]{2,28}$"
+        },
+        "vpcCidr": {
+          "type": "string",
+          "title": "CIDR de la VPC",
+          "default": "10.0.0.0/16"
+        },
+        "dynamoPartitionKey": {
+          "type": "string",
+          "title": "DynamoDB Partition Key",
+          "default": "id"
+        },
+        "lambdaRuntime": {
+          "type": "string",
+          "title": "Lambda Runtime",
+          "enum": ["python3.12", "python3.11", "nodejs20.x", "nodejs18.x", "java21", "java17"],
+          "default": "python3.12"
+        },
+        "lambdaHandler": {
+          "type": "string",
+          "title": "Lambda Handler",
+          "default": "lambda_function.lambda_handler"
+        },
+        "lambdaMemoryMb": {
+          "type": "number",
+          "title": "Lambda Memory (MB)",
+          "default": 256,
+          "enum": [128, 256, 512, 1024, 2048]
+        },
+        "lambdaTimeoutSeconds": {
+          "type": "number",
+          "title": "Lambda Timeout (segundos)",
+          "default": 30
+        },
+        "s3BucketCode": {
+          "type": "string",
+          "title": "S3 Bucket del código Lambda"
+        },
+        "s3KeyCode": {
+          "type": "string",
+          "title": "S3 Key del código Lambda",
+          "default": "releases/function.zip"
+        },
+        "enableNatGateway": {
+          "type": "boolean",
+          "title": "Habilitar NAT Gateway en la VPC",
+          "description": "Necesario si la Lambda debe hacer llamadas salientes. Tiene costo adicional.",
+          "default": false
+        },
+        "enablePitr": {
+          "type": "boolean",
+          "title": "Habilitar PITR en DynamoDB",
+          "default": true
+        },
+        "ownerTeam": {
+          "type": "string",
+          "title": "Equipo responsable"
+        },
+        "costCenter": {
+          "type": "string",
+          "title": "Centro de costos"
+        }
+      },
+      "required": [
+        "awsAccountId", "awsRegion", "availabilityZone1", "availabilityZone2",
+        "projectName", "environment", "dynamoPartitionKey",
+        "lambdaRuntime", "lambdaHandler", "s3BucketCode", "s3KeyCode", "ownerTeam"
+      ]
+    }
+  },
+  "invocationMethod": {
+    "type": "GITHUB",
+    "org": "TU_ORG_GITHUB",
+    "repo": "port-aws-golden-path",
+    "workflow": "deploy-aws-resource.yml",
+    "workflowInputs": {
+      "port_context": {
+        "runId":        "{{ .run.id }}",
+        "blueprint":    "aws_resource",
+        "inputs":       "{{ .inputs }}",
+        "resourceType": "VPC+DynamoDB+Lambda"
+      }
+    },
+    "reportWorkflowStatus": true
+  }
+}

@@ -1,0 +1,203 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Golden Path — Tabla DynamoDB con configuración de capacidad, índices,
+  TTL, PITR y encriptación. Generado por Port Platform Engineering.
+
+Parameters:
+
+  ProjectName:
+    Type: String
+    MinLength: 3
+    MaxLength: 30
+    AllowedPattern: "^[a-z][a-z0-9-]+$"
+
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+    Default: dev
+
+  PartitionKey:
+    Type: String
+    Description: Nombre del atributo Partition Key (Hash Key)
+    Default: id
+
+  PartitionKeyType:
+    Type: String
+    Description: "Tipo del Partition Key: S=String, N=Number, B=Binary"
+    AllowedValues: [S, N, B]
+    Default: S
+
+  SortKey:
+    Type: String
+    Description: Nombre del Sort Key (opcional — dejar vacío si no se usa)
+    Default: ""
+
+  SortKeyType:
+    Type: String
+    AllowedValues: [S, N, B]
+    Default: S
+
+  BillingMode:
+    Type: String
+    AllowedValues: [PAY_PER_REQUEST, PROVISIONED]
+    Default: PAY_PER_REQUEST
+
+  ReadCapacity:
+    Type: Number
+    Description: RCU — ignorado si BillingMode=PAY_PER_REQUEST
+    Default: 5
+    MinValue: 1
+
+  WriteCapacity:
+    Type: Number
+    Description: WCU — ignorado si BillingMode=PAY_PER_REQUEST
+    Default: 5
+    MinValue: 1
+
+  EnablePitr:
+    Type: String
+    Description: Habilitar Point-in-Time Recovery (recomendado en prod)
+    AllowedValues: ["true", "false"]
+    Default: "true"
+
+  EnableTtl:
+    Type: String
+    Description: Habilitar Time-To-Live para expiración automática de items
+    AllowedValues: ["true", "false"]
+    Default: "false"
+
+  TtlAttribute:
+    Type: String
+    Description: Nombre del atributo TTL (Unix timestamp en segundos)
+    Default: expiresAt
+
+# ─────────────────────────────────────────────────────────────────────────────
+Conditions:
+  HasSortKey:       !Not [!Equals [!Ref SortKey, ""]]
+  IsProvisioned:    !Equals [!Ref BillingMode, "PROVISIONED"]
+  EnablePitrTrue:   !Equals [!Ref EnablePitr, "true"]
+  EnableTtlTrue:    !Equals [!Ref EnableTtl,  "true"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+Resources:
+
+  DynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain          # Protege contra borrado accidental
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "${ProjectName}-${Environment}"
+      BillingMode: !Ref BillingMode
+
+      # ── Definición de atributos ─────────────────────────────────────────────
+      AttributeDefinitions:
+        - AttributeName: !Ref PartitionKey
+          AttributeType: !Ref PartitionKeyType
+        - !If
+          - HasSortKey
+          - AttributeName: !Ref SortKey
+            AttributeType: !Ref SortKeyType
+          - !Ref AWS::NoValue
+
+      # ── Esquema de claves ────────────────────────────────────────────────────
+      KeySchema:
+        - AttributeName: !Ref PartitionKey
+          KeyType: HASH
+        - !If
+          - HasSortKey
+          - AttributeName: !Ref SortKey
+            KeyType: RANGE
+          - !Ref AWS::NoValue
+
+      # ── Capacidad provisionada (solo si no es On-Demand) ────────────────────
+      ProvisionedThroughput: !If
+        - IsProvisioned
+        - ReadCapacityUnits:  !Ref ReadCapacity
+          WriteCapacityUnits: !Ref WriteCapacity
+        - !Ref AWS::NoValue
+
+      # ── Point-in-Time Recovery ───────────────────────────────────────────────
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !If [EnablePitrTrue, true, false]
+
+      # ── TTL ──────────────────────────────────────────────────────────────────
+      TimeToLiveSpecification:
+        Enabled: !If [EnableTtlTrue, true, false]
+        AttributeName: !If [EnableTtlTrue, !Ref TtlAttribute, !Ref AWS::NoValue]
+
+      # ── Encriptación (SSE con KMS administrado por AWS) ──────────────────────
+      SSESpecification:
+        SSEEnabled: true
+
+      # ── Streams (habilitados para integración futura con Lambda) ─────────────
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: port-golden-path
+
+  # ── IAM Policy para acceso a la tabla (exportada para uso en Lambda/EC2) ───
+  DynamoDBAccessPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${ProjectName}-${Environment}-dynamodb-access"
+      Description: !Sub "Acceso CRUD a la tabla ${ProjectName}-${Environment}"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:BatchGetItem
+              - dynamodb:BatchWriteItem
+              - dynamodb:DescribeTable
+              - dynamodb:ConditionCheckItem
+            Resource:
+              - !GetAtt DynamoDBTable.Arn
+              - !Sub "${DynamoDBTable.Arn}/index/*"
+          - Effect: Allow
+            Action:
+              - dynamodb:ListStreams
+              - dynamodb:DescribeStream
+              - dynamodb:GetRecords
+              - dynamodb:GetShardIterator
+            Resource: !GetAtt DynamoDBTable.StreamArn
+
+# ─────────────────────────────────────────────────────────────────────────────
+Outputs:
+
+  TableName:
+    Description: Nombre de la tabla DynamoDB
+    Value: !Ref DynamoDBTable
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-DynamoTableName"
+
+  TableArn:
+    Description: ARN de la tabla DynamoDB
+    Value: !GetAtt DynamoDBTable.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-DynamoTableArn"
+
+  TableStreamArn:
+    Description: ARN del DynamoDB Stream
+    Value: !GetAtt DynamoDBTable.StreamArn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-DynamoStreamArn"
+
+  AccessPolicyArn:
+    Description: ARN de la policy IAM de acceso a la tabla
+    Value: !Ref DynamoDBAccessPolicy
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-DynamoAccessPolicyArn"

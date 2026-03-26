@@ -1,0 +1,90 @@
+{
+  "identifier": "deploy_aws_vpc",
+  "title": "Desplegar VPC en AWS",
+  "icon": "AWS",
+  "description": "Crea una VPC con subnets públicas y privadas, Internet Gateway, NAT Gateway y tablas de ruteo. Solo configura las variables — el CloudFormation se genera automáticamente.",
+  "trigger": {
+    "type": "self-service",
+    "operation": "CREATE",
+    "userInputs": {
+      "properties": {
+        "awsAccountId": {
+          "type": "string",
+          "title": "AWS Account ID",
+          "description": "ID de la cuenta AWS destino (12 dígitos)",
+          "pattern": "^[0-9]{12}$"
+        },
+        "awsRegion": {
+          "type": "string",
+          "title": "Región AWS",
+          "enum": [
+            "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+            "eu-west-1", "eu-west-2", "eu-central-1",
+            "ap-southeast-1", "ap-southeast-2", "sa-east-1"
+          ],
+          "default": "us-east-1"
+        },
+        "availabilityZone1": {
+          "type": "string",
+          "title": "Availability Zone 1",
+          "description": "Primera AZ para subnets (ej: us-east-1a)",
+          "default": "us-east-1a"
+        },
+        "availabilityZone2": {
+          "type": "string",
+          "title": "Availability Zone 2",
+          "description": "Segunda AZ para alta disponibilidad (ej: us-east-1b)",
+          "default": "us-east-1b"
+        },
+        "environment": {
+          "type": "string",
+          "title": "Entorno",
+          "enum": ["dev", "staging", "prod"],
+          "default": "dev"
+        },
+        "projectName": {
+          "type": "string",
+          "title": "Nombre del proyecto",
+          "description": "Identificador único — se usa como prefijo en todos los recursos",
+          "pattern": "^[a-z][a-z0-9-]{2,28}$"
+        },
+        "vpcCidr": {
+          "type": "string",
+          "title": "CIDR de la VPC",
+          "description": "Rango IP de la VPC (ej: 10.0.0.0/16)",
+          "default": "10.0.0.0/16"
+        },
+        "enableNatGateway": {
+          "type": "boolean",
+          "title": "Habilitar NAT Gateway",
+          "description": "Permite que las subnets privadas accedan a internet. Tiene costo adicional.",
+          "default": false
+        },
+        "ownerTeam": {
+          "type": "string",
+          "title": "Equipo responsable"
+        },
+        "costCenter": {
+          "type": "string",
+          "title": "Centro de costos"
+        }
+      },
+      "required": ["awsAccountId", "awsRegion", "availabilityZone1", "projectName", "environment", "ownerTeam"]
+    }
+  },
+  "invocationMethod": {
+    "type": "GITHUB",
+    "org": "TU_ORG_GITHUB",
+    "repo": "port-aws-golden-path",
+    "workflow": "deploy-aws-resource.yml",
+    "workflowInputs": {
+      "port_context": {
+        "runId":        "{{ .run.id }}",
+        "blueprint":    "aws_resource",
+        "inputs":       "{{ .inputs }}",
+        "resourceType": "VPC"
+      }
+    },
+    "reportWorkflowStatus": true
+  }
+}

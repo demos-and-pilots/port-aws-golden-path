@@ -1,0 +1,420 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Golden Path COMPLETO — Stack integrado que crea VPC + DynamoDB + Lambda en un
+  solo despliegue. La Lambda se despliega dentro de la VPC y tiene acceso directo
+  a DynamoDB via VPC Endpoint (sin salir a internet). Generado por Port Platform Engineering.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PARÁMETROS
+# ─────────────────────────────────────────────────────────────────────────────
+Parameters:
+
+  ProjectName:
+    Type: String
+    MinLength: 3
+    MaxLength: 28
+    AllowedPattern: "^[a-z][a-z0-9-]+$"
+
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+    Default: dev
+
+  # ── VPC ────────────────────────────────────────────────────────────────────
+  VpcCidr:
+    Type: String
+    Default: "10.0.0.0/16"
+
+  AvailabilityZone1:
+    Type: AWS::EC2::AvailabilityZone::Name
+
+  AvailabilityZone2:
+    Type: AWS::EC2::AvailabilityZone::Name
+
+  EnableNatGateway:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+
+  # ── DynamoDB ───────────────────────────────────────────────────────────────
+  DynamoPartitionKey:
+    Type: String
+    Default: id
+
+  EnablePitr:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+
+  # ── Lambda ─────────────────────────────────────────────────────────────────
+  LambdaRuntime:
+    Type: String
+    AllowedValues:
+      - python3.12
+      - python3.11
+      - nodejs20.x
+      - nodejs18.x
+      - java21
+      - java17
+    Default: python3.12
+
+  LambdaHandler:
+    Type: String
+    Default: lambda_function.lambda_handler
+
+  LambdaMemorySize:
+    Type: Number
+    Default: 256
+
+  LambdaTimeout:
+    Type: Number
+    Default: 30
+    MaxValue: 900
+
+  S3Bucket:
+    Type: String
+
+  S3Key:
+    Type: String
+    Default: releases/function.zip
+
+# ─────────────────────────────────────────────────────────────────────────────
+Conditions:
+  CreateNatGateway:  !Equals [!Ref EnableNatGateway, "true"]
+  EnablePitrTrue:    !Equals [!Ref EnablePitr, "true"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+Resources:
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # BLOQUE 1 — VPC
+  # ══════════════════════════════════════════════════════════════════════════
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-vpc"
+        - Key: ManagedBy
+          Value: port-golden-path
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-igw"
+
+  AttachIgw:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Select [0, !Cidr [!Ref VpcCidr, 6, 8]]
+      AvailabilityZone: !Ref AvailabilityZone1
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-public-1"
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Select [1, !Cidr [!Ref VpcCidr, 6, 8]]
+      AvailabilityZone: !Ref AvailabilityZone2
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-public-2"
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Select [2, !Cidr [!Ref VpcCidr, 6, 8]]
+      AvailabilityZone: !Ref AvailabilityZone1
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-private-1"
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Select [3, !Cidr [!Ref VpcCidr, 6, 8]]
+      AvailabilityZone: !Ref AvailabilityZone2
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-private-2"
+
+  NatEip:
+    Type: AWS::EC2::EIP
+    Condition: CreateNatGateway
+    DependsOn: AttachIgw
+    Properties:
+      Domain: vpc
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Condition: CreateNatGateway
+    Properties:
+      AllocationId: !GetAtt NatEip.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-nat"
+
+  PublicRT:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-public-rt"
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachIgw
+    Properties:
+      RouteTableId: !Ref PublicRT
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway
+
+  PubSub1RTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PublicSubnet1, RouteTableId: !Ref PublicRT }
+
+  PubSub2RTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PublicSubnet2, RouteTableId: !Ref PublicRT }
+
+  PrivateRT:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-private-rt"
+
+  PrivateRouteNat:
+    Type: AWS::EC2::Route
+    Condition: CreateNatGateway
+    Properties:
+      RouteTableId: !Ref PrivateRT
+      DestinationCidrBlock: "0.0.0.0/0"
+      NatGatewayId: !Ref NatGateway
+
+  PriSub1RTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PrivateSubnet1, RouteTableId: !Ref PrivateRT }
+
+  PriSub2RTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PrivateSubnet2, RouteTableId: !Ref PrivateRT }
+
+  # ── VPC Endpoint para DynamoDB — tráfico nunca sale a internet ─────────────
+  DynamoDBVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.dynamodb"
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRT
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: "dynamodb:*"
+            Resource: "*"
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # BLOQUE 2 — DynamoDB
+  # ══════════════════════════════════════════════════════════════════════════
+
+  DynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "${ProjectName}-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: !Ref DynamoPartitionKey
+          AttributeType: S
+      KeySchema:
+        - AttributeName: !Ref DynamoPartitionKey
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !If [EnablePitrTrue, true, false]
+      SSESpecification:
+        SSEEnabled: true
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: port-golden-path
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # BLOQUE 3 — Lambda + Security Group + IAM Role
+  # ══════════════════════════════════════════════════════════════════════════
+
+  LambdaSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "SG Lambda ${ProjectName}-${Environment}"
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-lambda-sg"
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${Environment}-lambda-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoAndS3Access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                Resource:
+                  - !GetAtt DynamoDBTable.Arn
+                  - !Sub "${DynamoDBTable.Arn}/index/*"
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub "arn:aws:s3:::${S3Bucket}/*"
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: "*"
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: port-golden-path
+
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ProjectName}-${Environment}"
+      RetentionInDays: 30
+
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: LambdaLogGroup
+    Properties:
+      FunctionName: !Sub "${ProjectName}-${Environment}"
+      Description: !Sub "Lambda ${ProjectName} (${Environment}) — VPC+DynamoDB Golden Path — Port"
+      Runtime: !Ref LambdaRuntime
+      Handler: !Ref LambdaHandler
+      Role: !GetAtt LambdaRole.Arn
+      MemorySize: !Ref LambdaMemorySize
+      Timeout: !Ref LambdaTimeout
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !Ref S3Key
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSG
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+      Environment:
+        Variables:
+          ENVIRONMENT:    !Ref Environment
+          PROJECT_NAME:   !Ref ProjectName
+          DYNAMO_TABLE:   !Ref DynamoDBTable
+          AWS_ACCOUNT_ID: !Ref AWS::AccountId
+          LOG_LEVEL:      INFO
+      TracingConfig:
+        Mode: Active
+      Architectures:
+        - x86_64
+      Tags:
+        Project:     !Ref ProjectName
+        Environment: !Ref Environment
+        ManagedBy:   port-golden-path
+
+# ─────────────────────────────────────────────────────────────────────────────
+Outputs:
+
+  VpcId:
+    Value: !Ref VPC
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-VpcId"
+
+  PrivateSubnet1Id:
+    Value: !Ref PrivateSubnet1
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-PrivateSub1Id"
+
+  PrivateSubnet2Id:
+    Value: !Ref PrivateSubnet2
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-PrivateSub2Id"
+
+  DynamoTableName:
+    Value: !Ref DynamoDBTable
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-DynamoTable"
+
+  DynamoTableArn:
+    Value: !GetAtt DynamoDBTable.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-DynamoArn"
+
+  LambdaFunctionName:
+    Value: !Ref LambdaFunction
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-LambdaName"
+
+  LambdaFunctionArn:
+    Value: !GetAtt LambdaFunction.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-LambdaArn"
+
+  DynamoVpcEndpointId:
+    Value: !Ref DynamoDBVpcEndpoint
+    Description: VPC Endpoint de DynamoDB (tráfico no sale a internet)
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-DynamoEndpointId"
