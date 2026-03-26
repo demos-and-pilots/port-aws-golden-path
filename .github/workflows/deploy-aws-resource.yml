@@ -33,37 +33,37 @@ jobs:
           echo "environment=$(echo $INPUTS | jq -r '.environment')"         >> $GITHUB_OUTPUT
           echo "project_name=$(echo $INPUTS | jq -r '.projectName')"        >> $GITHUB_OUTPUT
           echo "owner_team=$(echo $INPUTS | jq -r '.ownerTeam')"            >> $GITHUB_OUTPUT
-          echo "cost_center=$(echo $INPUTS | jq -r '.costCenter // \"N/A\"')" >> $GITHUB_OUTPUT
+          echo "cost_center=$(echo $INPUTS | jq -r '.costCenter // "Unassigned"')" >> $GITHUB_OUTPUT
 
           # VPC-specific
-          echo "vpc_cidr=$(echo $INPUTS | jq -r '.vpcCidr // \"10.0.0.0/16\"')"          >> $GITHUB_OUTPUT
-          echo "az1=$(echo $INPUTS | jq -r '.availabilityZone1 // \"us-east-1a\"')"       >> $GITHUB_OUTPUT
-          echo "az2=$(echo $INPUTS | jq -r '.availabilityZone2 // \"us-east-1b\"')"       >> $GITHUB_OUTPUT
-          echo "nat_gw=$(echo $INPUTS | jq -r '.enableNatGateway // false')"              >> $GITHUB_OUTPUT
+          echo "vpc_cidr=$(echo $INPUTS | jq -r '.vpcCidr // "10.0.0.0/16"')"          >> $GITHUB_OUTPUT
+          echo "az1=$(echo $INPUTS | jq -r '.availabilityZone1 // "us-east-1a"')"       >> $GITHUB_OUTPUT
+          echo "az2=$(echo $INPUTS | jq -r '.availabilityZone2 // "us-east-1b"')"       >> $GITHUB_OUTPUT
+          echo "nat_gw=$(echo $INPUTS | jq -r '.enableNatGateway // false')"            >> $GITHUB_OUTPUT
 
           # DynamoDB-specific
-          echo "dynamo_pk=$(echo $INPUTS | jq -r '.partitionKey // .dynamoPartitionKey // \"id\"')" >> $GITHUB_OUTPUT
-          echo "dynamo_pk_type=$(echo $INPUTS | jq -r '.partitionKeyType // \"S\"')"      >> $GITHUB_OUTPUT
-          echo "dynamo_sk=$(echo $INPUTS | jq -r '.sortKey // \"\"')"                     >> $GITHUB_OUTPUT
-          echo "dynamo_sk_type=$(echo $INPUTS | jq -r '.sortKeyType // \"S\"')"           >> $GITHUB_OUTPUT
-          echo "billing_mode=$(echo $INPUTS | jq -r '.billingMode // \"PAY_PER_REQUEST\"')" >> $GITHUB_OUTPUT
-          echo "read_capacity=$(echo $INPUTS | jq -r '.readCapacity // 5')"               >> $GITHUB_OUTPUT
-          echo "write_capacity=$(echo $INPUTS | jq -r '.writeCapacity // 5')"             >> $GITHUB_OUTPUT
-          echo "enable_pitr=$(echo $INPUTS | jq -r '.enablePitr // true')"                >> $GITHUB_OUTPUT
-          echo "enable_ttl=$(echo $INPUTS | jq -r '.enableTtl // false')"                 >> $GITHUB_OUTPUT
-          echo "ttl_attr=$(echo $INPUTS | jq -r '.ttlAttribute // \"expiresAt\"')"        >> $GITHUB_OUTPUT
+          echo "dynamo_pk=$(echo $INPUTS | jq -r '.partitionKey // .dynamoPartitionKey // "id"')" >> $GITHUB_OUTPUT
+          echo "dynamo_pk_type=$(echo $INPUTS | jq -r '.partitionKeyType // "S"')"      >> $GITHUB_OUTPUT
+          echo "dynamo_sk=$(echo $INPUTS | jq -r '.sortKey // ""')"                     >> $GITHUB_OUTPUT
+          echo "dynamo_sk_type=$(echo $INPUTS | jq -r '.sortKeyType // "S"')"           >> $GITHUB_OUTPUT
+          echo "billing_mode=$(echo $INPUTS | jq -r '.billingMode // "PAY_PER_REQUEST"')" >> $GITHUB_OUTPUT
+          echo "read_capacity=$(echo $INPUTS | jq -r '.readCapacity // 5')"             >> $GITHUB_OUTPUT
+          echo "write_capacity=$(echo $INPUTS | jq -r '.writeCapacity // 5')"           >> $GITHUB_OUTPUT
+          echo "enable_pitr=$(echo $INPUTS | jq -r '.enablePitr // true')"              >> $GITHUB_OUTPUT
+          echo "enable_ttl=$(echo $INPUTS | jq -r '.enableTtl // false')"               >> $GITHUB_OUTPUT
+          echo "ttl_attr=$(echo $INPUTS | jq -r '.ttlAttribute // "expiresAt"')"        >> $GITHUB_OUTPUT
 
           # Lambda-specific
-          echo "lambda_runtime=$(echo $INPUTS | jq -r '.runtime // .lambdaRuntime // \"python3.12\"')"       >> $GITHUB_OUTPUT
-          echo "lambda_handler=$(echo $INPUTS | jq -r '.handler // .lambdaHandler // \"lambda_function.lambda_handler\"')" >> $GITHUB_OUTPUT
-          echo "lambda_memory=$(echo $INPUTS | jq -r '.memorySizeMb // .lambdaMemoryMb // 256')"             >> $GITHUB_OUTPUT
-          echo "lambda_timeout=$(echo $INPUTS | jq -r '.timeoutSeconds // .lambdaTimeoutSeconds // 30')"     >> $GITHUB_OUTPUT
-          echo "s3_bucket=$(echo $INPUTS | jq -r '.s3BucketCode')"                        >> $GITHUB_OUTPUT
-          echo "s3_key=$(echo $INPUTS | jq -r '.s3KeyCode // \"releases/function.zip\"')" >> $GITHUB_OUTPUT
-          echo "vpc_id=$(echo $INPUTS | jq -r '.vpcId // \"\"')"                          >> $GITHUB_OUTPUT
-          echo "subnet_ids=$(echo $INPUTS | jq -r '.subnetIds // \"\"')"                  >> $GITHUB_OUTPUT
-          echo "enable_dlq=$(echo $INPUTS | jq -r '.enableDlq // false')"                 >> $GITHUB_OUTPUT
-          echo "env_vars=$(echo $INPUTS | jq -r '.envVars // \"\"')"                      >> $GITHUB_OUTPUT
+          echo "lambda_runtime=$(echo $INPUTS | jq -r '.runtime // .lambdaRuntime // "python3.12"')"       >> $GITHUB_OUTPUT
+          echo "lambda_handler=$(echo $INPUTS | jq -r '.handler // .lambdaHandler // "lambda_function.lambda_handler"')" >> $GITHUB_OUTPUT
+          echo "lambda_memory=$(echo $INPUTS | jq -r '.memorySizeMb // .lambdaMemoryMb // 256')"           >> $GITHUB_OUTPUT
+          echo "lambda_timeout=$(echo $INPUTS | jq -r '.timeoutSeconds // .lambdaTimeoutSeconds // 30')"   >> $GITHUB_OUTPUT
+          echo "s3_bucket=$(echo $INPUTS | jq -r '.s3BucketCode')"                      >> $GITHUB_OUTPUT
+          echo "s3_key=$(echo $INPUTS | jq -r '.s3KeyCode // "releases/function.zip"')" >> $GITHUB_OUTPUT
+          echo "vpc_id=$(echo $INPUTS | jq -r '.vpcId // ""')"                          >> $GITHUB_OUTPUT
+          echo "subnet_ids=$(echo $INPUTS | jq -r '.subnetIds // ""')"                  >> $GITHUB_OUTPUT
+          echo "enable_dlq=$(echo $INPUTS | jq -r '.enableDlq // false')"               >> $GITHUB_OUTPUT
+          echo "env_vars=$(echo $INPUTS | jq -r '.envVars // ""')"                      >> $GITHUB_OUTPUT
 
       # ── 2. Notificar inicio a Port ───────────────────────────────────────────
       - name: Notificar inicio a Port
