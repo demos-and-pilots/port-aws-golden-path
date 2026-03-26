@@ -75,7 +75,7 @@ jobs:
           operation:    PATCH_RUN
           runId:        ${{ steps.ctx.outputs.run_id }}
           logMessage:   "Iniciando despliegue de ${{ steps.ctx.outputs.resource_type }} en cuenta ${{ steps.ctx.outputs.account_id }} / región ${{ steps.ctx.outputs.region }}..."
-          status:       "IN_PROGRESS"
+      #    status:       "IN_PROGRESS"
 
       # ── 3. Checkout del repo (templates CloudFormation) ─────────────────────
       - name: Checkout
