@@ -44,7 +44,6 @@
           "type": "string",
           "title": "Tipo del Partition Key",
           "enum": ["S", "N", "B"],
-          "enumNames": ["String (S)", "Number (N)", "Binary (B)"],
           "default": "S"
         },
         "sortKey": {
@@ -62,10 +61,6 @@
           "type": "string",
           "title": "Modo de facturación",
           "enum": ["PAY_PER_REQUEST", "PROVISIONED"],
-          "enumNames": [
-            "On-Demand — paga por request (recomendado para dev)",
-            "Provisioned — capacidad fija (recomendado para prod con tráfico predecible)"
-          ],
           "default": "PAY_PER_REQUEST"
         },
         "readCapacity": {
@@ -111,7 +106,7 @@
   },
   "invocationMethod": {
     "type": "GITHUB",
-    "org": "TU_ORG_GITHUB",
+    "org": "demos-and-pilots",
     "repo": "port-aws-golden-path",
     "workflow": "deploy-aws-resource.yml",
     "workflowInputs": {

@@ -115,7 +115,7 @@
   },
   "invocationMethod": {
     "type": "GITHUB",
-    "org": "TU_ORG_GITHUB",
+    "org": "demos-and-pilots",
     "repo": "port-aws-golden-path",
     "workflow": "deploy-aws-resource.yml",
     "workflowInputs": {
