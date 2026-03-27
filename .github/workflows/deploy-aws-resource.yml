@@ -247,12 +247,29 @@ jobs:
         id: deploy_s3
         run: |
           STACK_NAME="${{ steps.ctx.outputs.project_name }}-${{ steps.ctx.outputs.environment }}-s3"
+          REGION="${{ steps.ctx.outputs.region }}"
           echo "stack_name=${STACK_NAME}" >> $GITHUB_OUTPUT
+
+          STACK_STATUS=$(aws cloudformation describe-stacks \
+            --stack-name "${STACK_NAME}" \
+            --region "${REGION}" \
+            --query 'Stacks[0].StackStatus' \
+            --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+
+          if [ "${STACK_STATUS}" = "ROLLBACK_COMPLETE" ]; then
+            echo "Stack in ROLLBACK_COMPLETE state. Deleting..."
+            aws cloudformation delete-stack \
+              --stack-name "${STACK_NAME}" \
+              --region "${REGION}"
+            aws cloudformation wait stack-delete-complete \
+              --stack-name "${STACK_NAME}" \
+              --region "${REGION}"
+          fi
 
           aws cloudformation deploy \
             --template-file cloudformation/s3/s3.yml \
             --stack-name "${STACK_NAME}" \
-            --region "${{ steps.ctx.outputs.region }}" \
+            --region "${REGION}" \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --parameter-overrides \
               ProjectName="${{ steps.ctx.outputs.project_name }}" \
