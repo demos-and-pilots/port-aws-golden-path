@@ -12,6 +12,7 @@
           "type": "string",
           "title": "AWS Account ID",
           "description": "ID de la cuenta AWS destino (12 dígitos)",
+          "default": "975050262842",
           "pattern": "^[0-9]{12}$"
         },
         "awsRegion": {

@@ -98,7 +98,8 @@ jobs:
 
       # ── 5. Seleccionar y desplegar el template correcto ──────────────────────
       - name: Desplegar VPC
-        if: steps.ctx.outputs.resource_type == 'VPC'
+      # if: steps.ctx.outputs.resource_type == 'VPC'
+        if: ${{ steps.ctx.outputs.resource_type == 'VPC' }}
         id: deploy_vpc
         run: |
           STACK_NAME="${{ steps.ctx.outputs.project_name }}-${{ steps.ctx.outputs.environment }}-vpc"
@@ -130,7 +131,8 @@ jobs:
           echo "stack_id=${STACK_ID}" >> $GITHUB_OUTPUT
 
       - name: Desplegar DynamoDB
-        if: steps.ctx.outputs.resource_type == 'DynamoDB'
+      #  if: steps.ctx.outputs.resource_type == 'DynamoDB'
+        if: ${{ steps.ctx.outputs.resource_type == 'DynamoDB' }}
         id: deploy_dynamodb
         run: |
           STACK_NAME="${{ steps.ctx.outputs.project_name }}-${{ steps.ctx.outputs.environment }}-dynamo"
@@ -172,7 +174,8 @@ jobs:
           echo "stack_id=${STACK_ID}" >> $GITHUB_OUTPUT
 
       - name: Desplegar Lambda en VPC
-        if: steps.ctx.outputs.resource_type == 'Lambda'
+      #  if: steps.ctx.outputs.resource_type == 'Lambda'
+        if: ${{ steps.ctx.outputs.resource_type == 'Lambda' }}
         id: deploy_lambda
         run: |
           STACK_NAME="${{ steps.ctx.outputs.project_name }}-${{ steps.ctx.outputs.environment }}-lambda"
@@ -215,7 +218,8 @@ jobs:
           echo "stack_id=${STACK_ID}" >> $GITHUB_OUTPUT
 
       - name: Desplegar Stack Completo (VPC + DynamoDB + Lambda)
-        if: steps.ctx.outputs.resource_type == 'VPC+DynamoDB+Lambda'
+      # if: steps.ctx.outputs.resource_type == 'VPC+DynamoDB+Lambda'
+        if: ${{ steps.ctx.outputs.resource_type == 'VPC+DynamoDB+Lambda' }}
         id: deploy_complete
         run: |
           STACK_NAME="${{ steps.ctx.outputs.project_name }}-${{ steps.ctx.outputs.environment }}-complete"
@@ -258,12 +262,24 @@ jobs:
         id: resolve
         if: always()
         run: |
-          # Tomar el stack_name del step que corrió
-          STACK_NAME="${{ steps.deploy_vpc.outputs.stack_name }}${{ steps.deploy_dynamodb.outputs.stack_name }}${{ steps.deploy_lambda.outputs.stack_name }}${{ steps.deploy_complete.outputs.stack_name }}"
-          STACK_ID="${{ steps.deploy_vpc.outputs.stack_id }}${{ steps.deploy_dynamodb.outputs.stack_id }}${{ steps.deploy_lambda.outputs.stack_id }}${{ steps.deploy_complete.outputs.stack_id }}"
+          # Seleccionar el stack_name y stack_id del step que corrió
+          if [ -n "${{ steps.deploy_vpc.outputs.stack_name }}" ]; then
+            STACK_NAME="${{ steps.deploy_vpc.outputs.stack_name }}"
+            STACK_ID="${{ steps.deploy_vpc.outputs.stack_id }}"
+          elif [ -n "${{ steps.deploy_dynamodb.outputs.stack_name }}" ]; then
+            STACK_NAME="${{ steps.deploy_dynamodb.outputs.stack_name }}"
+            STACK_ID="${{ steps.deploy_dynamodb.outputs.stack_id }}"
+          elif [ -n "${{ steps.deploy_lambda.outputs.stack_name }}" ]; then
+            STACK_NAME="${{ steps.deploy_lambda.outputs.stack_name }}"
+            STACK_ID="${{ steps.deploy_lambda.outputs.stack_id }}"
+          elif [ -n "${{ steps.deploy_complete.outputs.stack_name }}" ]; then
+            STACK_NAME="${{ steps.deploy_complete.outputs.stack_name }}"
+            STACK_ID="${{ steps.deploy_complete.outputs.stack_id }}"
+          fi
+          
           echo "stack_name=${STACK_NAME}" >> $GITHUB_OUTPUT
-          echo "stack_id=${STACK_ID}"     >> $GITHUB_OUTPUT
-          CONSOLE_URL="https://${{ steps.ctx.outputs.region }}.console.aws.amazon.com/cloudformation/home?region=${{ steps.ctx.outputs.region }}#/stacks/stackinfo?stackId=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${STACK_ID}")"
+          echo "stack_id=${STACK_ID}" >> $GITHUB_OUTPUT
+          CONSOLE_URL="https://${{ steps.ctx.outputs.region }}.console.aws.amazon.com/cloudformation/home?region=${{ steps.ctx.outputs.region }}#/stacks/stackinfo?stackId=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${STACK_ID}'))")"
           echo "console_url=${CONSOLE_URL}" >> $GITHUB_OUTPUT
 
       # ── 7. Notificar éxito a Port + actualizar catálogo ──────────────────────
