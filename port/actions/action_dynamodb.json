@@ -105,14 +105,14 @@
       "required": ["awsAccountId", "awsRegion", "projectName", "environment", "partitionKey", "ownerTeam"]
     }
   },
- "invocationMethod": {
+  "invocationMethod": {
     "type": "INTEGRATION_ACTION",
     "installationId": "github-port-demos",
     "integrationActionType": "dispatch_workflow",
     "integrationActionExecutionProperties": {
       "org": "demos-and-pilots",
       "repo": "port-aws-golden-path",
-      "workflow": "deploy-aws-resource",
+      "workflow": "deploy-aws-resource.yml",
       "workflowInputs": {
         "port_context": {
           "runId": "{{ .run.id }}",

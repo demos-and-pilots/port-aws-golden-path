@@ -113,19 +113,25 @@
       ]
     }
   },
-  "invocationMethod": {
-    "type": "GITHUB",
-    "org": "demos-and-pilots",
-    "repo": "port-aws-golden-path",
-    "workflow": "deploy-aws-resource.yml",
-    "workflowInputs": {
-      "port_context": {
-        "runId":        "{{ .run.id }}",
-        "blueprint":    "aws_resource",
-        "inputs":       "{{ .inputs }}",
-        "resourceType": "VPC+DynamoDB+Lambda"
-      }
-    },
-    "reportWorkflowStatus": true
-  }
+     "invocationMethod": {
+    "type": "INTEGRATION_ACTION",
+    "installationId": "github-port-demos",
+    "integrationActionType": "dispatch_workflow",
+    "integrationActionExecutionProperties": {
+      "org": "demos-and-pilots",
+      "repo": "port-aws-golden-path",
+      "workflow": "deploy-aws-resource.yml",
+      "workflowInputs": {
+        "port_context": {
+          "runId": "{{ .run.id }}",
+          "blueprint": "aws_resource",
+          "inputs": "{{ .inputs }}",
+          "resourceType": "DynamoDB"
+        }
+      },
+      "reportWorkflowStatus": true
+    }
+  },
+  "allowAnyoneToViewRuns": true,
+  "requiredApproval": false
 }
