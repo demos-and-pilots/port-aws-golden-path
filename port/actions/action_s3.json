@@ -1,0 +1,103 @@
+{
+  "identifier": "deploy_aws_s3",
+  "title": "Desplegar Bucket S3 en AWS",
+  "icon": "AWS",
+  "description": "Crea un bucket S3 con versionado opcional, encriptación, bloqueo de acceso público, lifecycle opcional y policy IAM de acceso. Solo configura variables.",
+  "trigger": {
+    "type": "self-service",
+    "operation": "CREATE",
+    "userInputs": {
+      "properties": {
+        "awsAccountId": {
+          "type": "string",
+          "title": "AWS Account ID",
+          "default": "975050262842",
+          "pattern": "^[0-9]{12}$"
+        },
+        "awsRegion": {
+          "type": "string",
+          "title": "Región AWS",
+          "enum": [
+            "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+            "eu-west-1", "eu-west-2", "eu-central-1",
+            "ap-southeast-1", "ap-southeast-2", "sa-east-1"
+          ],
+          "default": "us-east-1"
+        },
+        "environment": {
+          "type": "string",
+          "title": "Entorno",
+          "enum": ["dev", "staging", "prod"],
+          "default": "dev"
+        },
+        "projectName": {
+          "type": "string",
+          "title": "Nombre del proyecto",
+          "description": "Prefijo base para el nombre del bucket y sus recursos asociados",
+          "pattern": "^[a-z][a-z0-9-]{2,28}$"
+        },
+        "bucketSuffix": {
+          "type": "string",
+          "title": "Sufijo del bucket",
+          "description": "Ayuda a mantener el nombre del bucket único globalmente",
+          "default": "artifacts",
+          "pattern": "^[a-z0-9-]{3,30}$"
+        },
+        "enableVersioning": {
+          "type": "boolean",
+          "title": "Habilitar versionado",
+          "description": "Conserva versiones anteriores de los objetos",
+          "default": true
+        },
+        "enableLifecycleExpiration": {
+          "type": "boolean",
+          "title": "Habilitar lifecycle expiration",
+          "description": "Elimina objetos y versiones antiguas automáticamente",
+          "default": false
+        },
+        "expirationInDays": {
+          "type": "number",
+          "title": "Expirar objetos después de (días)",
+          "description": "Se aplica cuando lifecycle expiration está habilitado",
+          "default": 30
+        },
+        "noncurrentVersionExpirationInDays": {
+          "type": "number",
+          "title": "Expirar versiones no actuales después de (días)",
+          "description": "Se aplica cuando lifecycle expiration está habilitado",
+          "default": 30
+        },
+        "ownerTeam": {
+          "type": "string",
+          "title": "Equipo responsable"
+        },
+        "costCenter": {
+          "type": "string",
+          "title": "Centro de costos"
+        }
+      },
+      "required": ["awsAccountId", "awsRegion", "projectName", "environment", "ownerTeam"]
+    }
+  },
+  "invocationMethod": {
+    "type": "INTEGRATION_ACTION",
+    "installationId": "github-port-demos",
+    "integrationActionType": "dispatch_workflow",
+    "integrationActionExecutionProperties": {
+      "org": "demos-and-pilots",
+      "repo": "port-aws-golden-path",
+      "workflow": "deploy-aws-resource.yml",
+      "workflowInputs": {
+        "port_context": {
+          "runId": "{{ .run.id }}",
+          "blueprint": "aws_resource",
+          "inputs": "{{ .inputs }}",
+          "resourceType": "S3"
+        }
+      },
+      "reportWorkflowStatus": true
+    }
+  },
+  "allowAnyoneToViewRuns": true,
+  "requiredApproval": false
+}

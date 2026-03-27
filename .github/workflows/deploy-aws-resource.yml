@@ -65,6 +65,13 @@ jobs:
           echo "enable_dlq=$(echo $INPUTS | jq -r '.enableDlq // false')"               >> $GITHUB_OUTPUT
           echo "env_vars=$(echo $INPUTS | jq -r '.envVars // ""')"                      >> $GITHUB_OUTPUT
 
+          # S3-specific
+          echo "bucket_suffix=$(echo $INPUTS | jq -r '.bucketSuffix // "artifacts"')"                       >> $GITHUB_OUTPUT
+          echo "enable_versioning=$(echo $INPUTS | jq -r '.enableVersioning // true')"                      >> $GITHUB_OUTPUT
+          echo "enable_lifecycle_expiration=$(echo $INPUTS | jq -r '.enableLifecycleExpiration // false')" >> $GITHUB_OUTPUT
+          echo "expiration_days=$(echo $INPUTS | jq -r '.expirationInDays // 30')"                          >> $GITHUB_OUTPUT
+          echo "noncurrent_expiration_days=$(echo $INPUTS | jq -r '.noncurrentVersionExpirationInDays // 30')" >> $GITHUB_OUTPUT
+
       # ── 2. Notificar inicio a Port ───────────────────────────────────────────
       - name: Notificar inicio a Port
         uses: port-labs/port-github-action@v1
@@ -235,6 +242,38 @@ jobs:
             --query 'Stacks[0].StackId' --output text)
           echo "stack_id=${STACK_ID}" >> $GITHUB_OUTPUT
 
+      - name: Desplegar S3
+        if: ${{ steps.ctx.outputs.resource_type == 'S3' }}
+        id: deploy_s3
+        run: |
+          STACK_NAME="${{ steps.ctx.outputs.project_name }}-${{ steps.ctx.outputs.environment }}-s3"
+          echo "stack_name=${STACK_NAME}" >> $GITHUB_OUTPUT
+
+          aws cloudformation deploy \
+            --template-file cloudformation/s3/s3.yml \
+            --stack-name "${STACK_NAME}" \
+            --region "${{ steps.ctx.outputs.region }}" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              ProjectName="${{ steps.ctx.outputs.project_name }}" \
+              Environment="${{ steps.ctx.outputs.environment }}" \
+              BucketSuffix="${{ steps.ctx.outputs.bucket_suffix }}" \
+              EnableVersioning="${{ steps.ctx.outputs.enable_versioning }}" \
+              EnableLifecycleExpiration="${{ steps.ctx.outputs.enable_lifecycle_expiration }}" \
+              ExpirationInDays="${{ steps.ctx.outputs.expiration_days }}" \
+              NoncurrentVersionExpirationInDays="${{ steps.ctx.outputs.noncurrent_expiration_days }}" \
+            --tags \
+              Project="${{ steps.ctx.outputs.project_name }}" \
+              Environment="${{ steps.ctx.outputs.environment }}" \
+              OwnerTeam="${{ steps.ctx.outputs.owner_team }}" \
+              CostCenter="${{ steps.ctx.outputs.cost_center }}" \
+              ManagedBy="port-golden-path"
+
+          STACK_ID=$(aws cloudformation describe-stacks \
+            --stack-name "${STACK_NAME}" \
+            --query 'Stacks[0].StackId' --output text)
+          echo "stack_id=${STACK_ID}" >> $GITHUB_OUTPUT
+
       - name: Desplegar Stack Completo (VPC + DynamoDB + Lambda)
       # if: steps.ctx.outputs.resource_type == 'VPC+DynamoDB+Lambda'
         if: ${{ steps.ctx.outputs.resource_type == 'VPC+DynamoDB+Lambda' }}
@@ -290,6 +329,9 @@ jobs:
           elif [ -n "${{ steps.deploy_lambda.outputs.stack_name }}" ]; then
             STACK_NAME="${{ steps.deploy_lambda.outputs.stack_name }}"
             STACK_ID="${{ steps.deploy_lambda.outputs.stack_id }}"
+          elif [ -n "${{ steps.deploy_s3.outputs.stack_name }}" ]; then
+            STACK_NAME="${{ steps.deploy_s3.outputs.stack_name }}"
+            STACK_ID="${{ steps.deploy_s3.outputs.stack_id }}"
           elif [ -n "${{ steps.deploy_complete.outputs.stack_name }}" ]; then
             STACK_NAME="${{ steps.deploy_complete.outputs.stack_name }}"
             STACK_ID="${{ steps.deploy_complete.outputs.stack_id }}"

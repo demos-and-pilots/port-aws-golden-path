@@ -1,0 +1,163 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Golden Path - Bucket S3 con versionado, encriptacion, bloqueo de acceso
+  publico y policy IAM de acceso. Generado por Port Platform Engineering.
+
+Parameters:
+
+  ProjectName:
+    Type: String
+    MinLength: 3
+    MaxLength: 30
+    AllowedPattern: "^[a-z][a-z0-9-]+$"
+
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+    Default: dev
+
+  BucketSuffix:
+    Type: String
+    Description: Sufijo adicional para asegurar nombre global unico del bucket
+    Default: artifacts
+    MinLength: 3
+    MaxLength: 30
+    AllowedPattern: "^[a-z0-9-]+$"
+
+  EnableVersioning:
+    Type: String
+    Description: Habilitar versionado del bucket
+    AllowedValues: ["true", "false"]
+    Default: "true"
+
+  EnableLifecycleExpiration:
+    Type: String
+    Description: Eliminar objetos expirados automaticamente
+    AllowedValues: ["true", "false"]
+    Default: "false"
+
+  ExpirationInDays:
+    Type: Number
+    Description: Dias para expirar objetos cuando lifecycle esta habilitado
+    Default: 30
+    MinValue: 1
+
+  NoncurrentVersionExpirationInDays:
+    Type: Number
+    Description: Dias para expirar versiones no actuales
+    Default: 30
+    MinValue: 1
+
+Conditions:
+  EnableVersioningTrue:          !Equals [!Ref EnableVersioning, "true"]
+  EnableLifecycleExpirationTrue: !Equals [!Ref EnableLifecycleExpiration, "true"]
+
+Resources:
+
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "${ProjectName}-${Environment}-${AWS::AccountId}-${AWS::Region}-${BucketSuffix}"
+
+      VersioningConfiguration:
+        Status: !If [EnableVersioningTrue, Enabled, Suspended]
+
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+            BucketKeyEnabled: true
+
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+      LifecycleConfiguration: !If
+        - EnableLifecycleExpirationTrue
+        - Rules:
+            - Id: ExpireObjectsRule
+              Status: Enabled
+              ExpirationInDays: !Ref ExpirationInDays
+              NoncurrentVersionExpiration:
+                NoncurrentDays: !Ref NoncurrentVersionExpirationInDays
+        - !Ref AWS::NoValue
+
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-${BucketSuffix}"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: port-golden-path
+
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt S3Bucket.Arn
+              - !Sub "${S3Bucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  S3AccessPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${ProjectName}-${Environment}-s3-access"
+      Description: !Sub "Acceso RW al bucket ${ProjectName}-${Environment}-${BucketSuffix}"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetBucketLocation
+            Resource: !GetAtt S3Bucket.Arn
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:GetObjectVersion
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:AbortMultipartUpload
+            Resource: !Sub "${S3Bucket.Arn}/*"
+
+Outputs:
+
+  BucketName:
+    Description: Nombre del bucket S3
+    Value: !Ref S3Bucket
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-S3BucketName"
+
+  BucketArn:
+    Description: ARN del bucket S3
+    Value: !GetAtt S3Bucket.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-S3BucketArn"
+
+  BucketDomainName:
+    Description: Dominio regional del bucket
+    Value: !GetAtt S3Bucket.RegionalDomainName
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-S3BucketDomainName"
+
+  AccessPolicyArn:
+    Description: ARN de la policy IAM de acceso al bucket
+    Value: !Ref S3AccessPolicy
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-S3AccessPolicyArn"
