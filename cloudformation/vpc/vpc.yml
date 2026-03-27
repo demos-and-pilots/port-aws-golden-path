@@ -224,7 +224,7 @@ Resources:
       SecurityGroupIngress:
         - IpProtocol: "-1"
           SourceSecurityGroupId: !GetAtt VPC.DefaultSecurityGroup
-          Description: "Tráfico interno VPC solamente"
+          Description: "Trafico interno VPC solamente"
       SecurityGroupEgress:
         - IpProtocol: "-1"
           CidrIp: "0.0.0.0/0"
