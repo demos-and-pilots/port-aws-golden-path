@@ -98,17 +98,35 @@ jobs:
 
       # ── 5. Seleccionar y desplegar el template correcto ──────────────────────
       - name: Desplegar VPC
-      # if: steps.ctx.outputs.resource_type == 'VPC'
         if: ${{ steps.ctx.outputs.resource_type == 'VPC' }}
         id: deploy_vpc
         run: |
           STACK_NAME="${{ steps.ctx.outputs.project_name }}-${{ steps.ctx.outputs.environment }}-vpc"
+          REGION="${{ steps.ctx.outputs.region }}"
+          
+          # Check if stack exists and is in ROLLBACK_COMPLETE
+          STACK_STATUS=$(aws cloudformation describe-stacks \
+            --stack-name "${STACK_NAME}" \
+            --region "${REGION}" \
+            --query 'Stacks[0].StackStatus' \
+            --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+          
+          if [ "${STACK_STATUS}" = "ROLLBACK_COMPLETE" ]; then
+            echo "Stack in ROLLBACK_COMPLETE state. Deleting..."
+            aws cloudformation delete-stack \
+              --stack-name "${STACK_NAME}" \
+              --region "${REGION}"
+            aws cloudformation wait stack-delete-complete \
+              --stack-name "${STACK_NAME}" \
+              --region "${REGION}"
+          fi
+          
           echo "stack_name=${STACK_NAME}" >> $GITHUB_OUTPUT
-
+          
           aws cloudformation deploy \
             --template-file cloudformation/vpc/vpc.yml \
             --stack-name "${STACK_NAME}" \
-            --region "${{ steps.ctx.outputs.region }}" \
+            --region "${REGION}" \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --parameter-overrides \
               ProjectName="${{ steps.ctx.outputs.project_name }}" \
@@ -124,7 +142,7 @@ jobs:
               CostCenter="${{ steps.ctx.outputs.cost_center }}" \
               ManagedBy="port-golden-path" \
               CreatedAt="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
+          
           STACK_ID=$(aws cloudformation describe-stacks \
             --stack-name "${STACK_NAME}" \
             --query 'Stacks[0].StackId' --output text)
