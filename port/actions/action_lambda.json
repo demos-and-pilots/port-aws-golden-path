@@ -122,7 +122,7 @@
           "runId": "{{ .run.id }}",
           "blueprint": "aws_resource",
           "inputs": "{{ .inputs }}",
-          "resourceType": "DynamoDB"
+          "resourceType": "Lambda"
         }
       },
       "reportWorkflowStatus": true
