@@ -150,13 +150,7 @@ Resources:
                 Resource: "*"
       # La política de SQS para DLQ se gestiona en un recurso separado
       # para evitar el uso inválido de Fn::If dentro de listas IAM Statement
-      Tags:
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: ManagedBy
-          Value: port-golden-path
+      # Tags omitidos: iam:TagRole no está disponible en el usuario de demo
 
   # ── Policy adicional para DLQ (separada del Role para evitar Fn::If en Statement) ─
   LambdaDlqPolicy:

@@ -236,13 +236,9 @@ jobs:
               VpcId="${{ steps.ctx.outputs.vpc_id }}" \
               SubnetIds="${{ steps.ctx.outputs.subnet_ids }}" \
               EnableDlq="${{ steps.ctx.outputs.enable_dlq }}" \
-              EnvVars="${ENV_VARS_CFN}" \
-            --tags \
-              Project="${{ steps.ctx.outputs.project_name }}" \
-              Environment="${{ steps.ctx.outputs.environment }}" \
-              OwnerTeam="${{ steps.ctx.outputs.owner_team }}" \
-              CostCenter="${{ steps.ctx.outputs.cost_center }}" \
-              ManagedBy="port-golden-path"
+              EnvVars="${ENV_VARS_CFN}"
+          # --tags omitido: logs:TagResource no disponible en usuario de demo
+          # Los recursos tienen tags explícitos en el template (excepto IAM Role y Log Group)
 
           STACK_ID=$(aws cloudformation describe-stacks \
             --stack-name "${STACK_NAME}" \
