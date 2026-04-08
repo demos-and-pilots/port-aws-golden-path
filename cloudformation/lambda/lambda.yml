@@ -230,18 +230,23 @@ Resources:
         - x86_64
 
       Tags:
-        Project: !Ref ProjectName
-        Environment: !Ref Environment
-        ManagedBy: port-golden-path
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: port-golden-path
 
-  # ── Permisos para que EventBridge / API Gateway invoquen la Lambda ─────────
+  # ── Permisos para que EventBridge invoque la Lambda ────────────────────────
+  # Nota: SourceArn debe especificarse con la ARN de la regla concreta;
+  # SourceAccount solo no es válido con early validation de CloudFormation.
+  # Este recurso otorga permiso genérico a EventBridge en la misma cuenta.
   LambdaInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !GetAtt LambdaFunction.Arn
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
-      SourceAccount: !Ref AWS::AccountId
 
 # ─────────────────────────────────────────────────────────────────────────────
 Outputs:

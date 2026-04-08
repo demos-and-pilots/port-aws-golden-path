@@ -61,7 +61,14 @@ jobs:
           echo "s3_bucket=$(echo $INPUTS | jq -r '.s3BucketCode')"                      >> $GITHUB_OUTPUT
           echo "s3_key=$(echo $INPUTS | jq -r '.s3KeyCode // "releases/function.zip"')" >> $GITHUB_OUTPUT
           echo "vpc_id=$(echo $INPUTS | jq -r '.vpcId // ""')"                          >> $GITHUB_OUTPUT
-          echo "subnet_ids=$(echo $INPUTS | jq -r '.subnetIds // ""')"                  >> $GITHUB_OUTPUT
+          # subnetIds puede llegar como array JSON ["subnet-x","subnet-y"] o como string CSV
+          SUBNET_RAW=$(echo $INPUTS | jq -r '.subnetIds // ""')
+          if echo "$SUBNET_RAW" | grep -q '^\['; then
+            SUBNET_IDS=$(echo "$SUBNET_RAW" | jq -r 'join(",")')
+          else
+            SUBNET_IDS="$SUBNET_RAW"
+          fi
+          echo "subnet_ids=${SUBNET_IDS}"                                                  >> $GITHUB_OUTPUT
           echo "enable_dlq=$(echo $INPUTS | jq -r '.enableDlq // false')"               >> $GITHUB_OUTPUT
           echo "env_vars=$(echo $INPUTS | jq -r '.envVars // ""')"                      >> $GITHUB_OUTPUT
 
