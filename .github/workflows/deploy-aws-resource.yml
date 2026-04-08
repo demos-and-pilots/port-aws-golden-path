@@ -220,7 +220,7 @@ jobs:
             --query 'Stacks[0].StackStatus' \
             --output text 2>/dev/null || echo "DOES_NOT_EXIST")
 
-          if [ "${STACK_STATUS}" = "ROLLBACK_COMPLETE" ] || [ "${STACK_STATUS}" = "UPDATE_ROLLBACK_COMPLETE" ]; then
+          if [ "${STACK_STATUS}" = "ROLLBACK_COMPLETE" ] || [ "${STACK_STATUS}" = "UPDATE_ROLLBACK_COMPLETE" ] || [ "${STACK_STATUS}" = "ROLLBACK_FAILED" ]; then
             echo "Stack in ${STACK_STATUS} state. Deleting..."
             aws cloudformation delete-stack \
               --stack-name "${STACK_NAME}" \
