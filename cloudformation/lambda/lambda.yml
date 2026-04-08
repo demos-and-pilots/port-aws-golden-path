@@ -212,7 +212,7 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           PROJECT_NAME: !Ref ProjectName
-          AWS_ACCOUNT_ID: !Ref AWS::AccountId
+          ACCOUNT_ID: !Ref AWS::AccountId
           LOG_LEVEL: !If [IsProd, "WARNING", "INFO"]
 
       # ── Dead-Letter Queue ────────────────────────────────────────────────────
