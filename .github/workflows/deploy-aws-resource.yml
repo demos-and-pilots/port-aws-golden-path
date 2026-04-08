@@ -211,7 +211,24 @@ jobs:
         id: deploy_lambda
         run: |
           STACK_NAME="${{ steps.ctx.outputs.project_name }}-${{ steps.ctx.outputs.environment }}-lambda"
+          REGION="${{ steps.ctx.outputs.region }}"
           echo "stack_name=${STACK_NAME}" >> $GITHUB_OUTPUT
+
+          STACK_STATUS=$(aws cloudformation describe-stacks \
+            --stack-name "${STACK_NAME}" \
+            --region "${REGION}" \
+            --query 'Stacks[0].StackStatus' \
+            --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+
+          if [ "${STACK_STATUS}" = "ROLLBACK_COMPLETE" ] || [ "${STACK_STATUS}" = "UPDATE_ROLLBACK_COMPLETE" ]; then
+            echo "Stack in ${STACK_STATUS} state. Deleting..."
+            aws cloudformation delete-stack \
+              --stack-name "${STACK_NAME}" \
+              --region "${REGION}"
+            aws cloudformation wait stack-delete-complete \
+              --stack-name "${STACK_NAME}" \
+              --region "${REGION}"
+          fi
 
           # Convertir env vars de formato KEY=VAL,KEY2=VAL2 a formato CFN
           ENV_VARS_CFN=""
