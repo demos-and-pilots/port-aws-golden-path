@@ -81,6 +81,7 @@ Parameters:
 Conditions:
   CreateDlq:    !Equals [!Ref EnableDlq, "true"]
   HasEnvVars:   !Not [!Equals [!Ref EnvVars, ""]]
+  IsProd:       !Equals [!Ref Environment, "prod"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 Resources:
@@ -137,26 +138,18 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              # Leer el código desde S3
               - Effect: Allow
                 Action:
                   - s3:GetObject
                   - s3:GetObjectVersion
                 Resource: !Sub "arn:aws:s3:::${S3Bucket}/*"
-              # Acceso a X-Ray para trazabilidad
               - Effect: Allow
                 Action:
                   - xray:PutTraceSegments
                   - xray:PutTelemetryRecords
                 Resource: "*"
-              # DLQ — solo si está habilitada
-              - !If
-                - CreateDlq
-                - Effect: Allow
-                  Action:
-                    - sqs:SendMessage
-                  Resource: !GetAtt DeadLetterQueue.Arn
-                - !Ref AWS::NoValue
+      # La política de SQS para DLQ se gestiona en un recurso separado
+      # para evitar el uso inválido de Fn::If dentro de listas IAM Statement
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -165,15 +158,28 @@ Resources:
         - Key: ManagedBy
           Value: port-golden-path
 
+  # ── Policy adicional para DLQ (separada del Role para evitar Fn::If en Statement) ─
+  LambdaDlqPolicy:
+    Type: AWS::IAM::Policy
+    Condition: CreateDlq
+    Properties:
+      PolicyName: !Sub "${ProjectName}-${Environment}-dlq-policy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - sqs:SendMessage
+            Resource: !GetAtt DeadLetterQueue.Arn
+      Roles:
+        - !Ref LambdaExecutionRole
+
   # ── Log Group (creado explícitamente para control de retención) ───────────
   LambdaLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub "/aws/lambda/${ProjectName}-${Environment}"
-      RetentionInDays: !If
-        - !Equals [!Ref Environment, prod]
-        - 90
-        - 14
+      RetentionInDays: !If [IsProd, 90, 14]
 
   # ── Lambda Function ──────────────────────────────────────────────────────────
   LambdaFunction:
@@ -207,7 +213,7 @@ Resources:
           ENVIRONMENT: !Ref Environment
           PROJECT_NAME: !Ref ProjectName
           AWS_ACCOUNT_ID: !Ref AWS::AccountId
-          LOG_LEVEL: !If [!Equals [!Ref Environment, prod], "WARNING", "INFO"]
+          LOG_LEVEL: !If [IsProd, "WARNING", "INFO"]
 
       # ── Dead-Letter Queue ────────────────────────────────────────────────────
       DeadLetterConfig: !If
