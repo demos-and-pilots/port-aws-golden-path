@@ -1,0 +1,247 @@
+{
+  "identifier": "cicd_readiness",
+  "title": "CI/CD Readiness",
+  "description": "Evalúa el nivel de madurez del pipeline CI/CD y las prácticas de seguridad del servicio Lambda.",
+  "blueprint": "lambdaFunction",
+  "levels": [
+    {
+      "color": "red",
+      "title": "Básico"
+    },
+    {
+      "color": "yellow",
+      "title": "Estándar"
+    },
+    {
+      "color": "blue",
+      "title": "Avanzado"
+    },
+    {
+      "color": "green",
+      "title": "Excelente"
+    }
+  ],
+  "rules": [
+    {
+      "identifier": "has_repository",
+      "title": "Tiene repositorio en GitHub",
+      "level": "Básico",
+      "query": {
+        "combinator": "and",
+        "conditions": [
+          {
+            "operator": "isNotEmpty",
+            "property": "$relations.repository"
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "has_ci_pipeline",
+      "title": "Pipeline CI configurado",
+      "level": "Básico",
+      "query": {
+        "combinator": "and",
+        "conditions": [
+          {
+            "operator": "isNotEmpty",
+            "property": "$relations.ciPipeline"
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "has_cd_pipeline",
+      "title": "Pipeline CD configurado",
+      "level": "Básico",
+      "query": {
+        "combinator": "and",
+        "conditions": [
+          {
+            "operator": "isNotEmpty",
+            "property": "$relations.cdPipeline"
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "deploy_success",
+      "title": "Último deploy exitoso",
+      "level": "Estándar",
+      "query": {
+        "combinator": "and",
+        "conditions": [
+          {
+            "operator": "=",
+            "property": "deployStatus",
+            "value": "success"
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "uses_oidc",
+      "title": "Usa OIDC (sin long-lived credentials)",
+      "level": "Estándar",
+      "query": {
+        "combinator": "and",
+        "conditions": [
+          {
+            "operator": "=",
+            "property": "hasOidcRole",
+            "value": true
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "has_secrets",
+      "title": "Secrets en AWS Secrets Manager",
+      "level": "Estándar",
+      "query": {
+        "combinator": "and",
+        "conditions": [
+          {
+            "operator": "=",
+            "property": "hasSecrets",
+            "value": true
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "data_classified",
+      "title": "Datos clasificados",
+      "level": "Estándar",
+      "query": {
+        "combinator": "and",
+        "conditions": [
+          {
+            "operator": "isNotEmpty",
+            "property": "dataClassification"
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "ci_passing",
+      "title": "CI pasa consistentemente (>90% éxito 30d)",
+      "level": "Avanzado",
+      "query": {
+        "combinator": "and",
+        "conditions": [
+          {
+            "operator": ">=",
+            "property": "$relations.ciPipeline.successRateLast30d",
+            "value": 90
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "coverage_ok",
+      "title": "Cobertura de tests >= 80%",
+      "level": "Avanzado",
+      "query": {
+        "combinator": "and",
+        "conditions": [
+          {
+            "operator": ">=",
+            "property": "$relations.ciPipeline.coveragePercent",
+            "value": 80
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "has_sast",
+      "title": "SAST activo en pipeline",
+      "level": "Avanzado",
+      "query": {
+        "combinator": "and",
+        "conditions": [
+          {
+            "operator": "=",
+            "property": "$relations.ciPipeline.hasSast",
+            "value": true
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "low_error_rate",
+      "title": "Error rate en prod < 1%",
+      "level": "Avanzado",
+      "query": {
+        "combinator": "and",
+        "conditions": [
+          {
+            "operator": "<",
+            "property": "errorRate7d",
+            "value": 1
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "canary_enabled",
+      "title": "Canary deploy activo en CD",
+      "level": "Excelente",
+      "query": {
+        "combinator": "and",
+        "conditions": [
+          {
+            "operator": "=",
+            "property": "$relations.cdPipeline.canaryEnabled",
+            "value": true
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "rollback_enabled",
+      "title": "Rollback automático habilitado",
+      "level": "Excelente",
+      "query": {
+        "combinator": "and",
+        "conditions": [
+          {
+            "operator": "=",
+            "property": "$relations.cdPipeline.rollbackEnabled",
+            "value": true
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "fast_deploy",
+      "title": "MTTD < 15 minutos",
+      "level": "Excelente",
+      "query": {
+        "combinator": "and",
+        "conditions": [
+          {
+            "operator": "<",
+            "property": "$relations.cdPipeline.meanTimeToDeployMin",
+            "value": 15
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "fast_recovery",
+      "title": "MTTR < 30 minutos",
+      "level": "Excelente",
+      "query": {
+        "combinator": "and",
+        "conditions": [
+          {
+            "operator": "<",
+            "property": "$relations.cdPipeline.meanTimeToRecoverMin",
+            "value": 30
+          }
+        ]
+      }
+    }
+  ]
+}

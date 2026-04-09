@@ -1,0 +1,104 @@
+{
+  "identifier": "ciPipeline",
+  "title": "CI Pipeline",
+  "description": "Pipeline de integración continua en GitHub Actions (lint, test, security, build).",
+  "icon": "Github",
+  "schema": {
+    "properties": {
+      "workflowFile": {
+        "title": "Archivo de workflow",
+        "type": "string",
+        "default": ".github/workflows/ci.yml"
+      },
+      "triggerEvents": {
+        "title": "Eventos que disparan el pipeline",
+        "type": "array",
+        "items": { "type": "string" },
+        "default": ["pull_request", "push"]
+      },
+      "lastRunStatus": {
+        "title": "Estado del último run",
+        "type": "string",
+        "enum": ["success", "failure", "cancelled", "in_progress", "queued"],
+        "enumColors": {
+          "success": "green",
+          "failure": "red",
+          "cancelled": "grey",
+          "in_progress": "blue",
+          "queued": "yellow"
+        }
+      },
+      "lastRunAt": {
+        "title": "Último run",
+        "type": "string",
+        "format": "date-time"
+      },
+      "lastRunDurationSec": {
+        "title": "Duración último run (seg)",
+        "type": "number"
+      },
+      "coveragePercent": {
+        "title": "Cobertura de tests (%)",
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100
+      },
+      "coverageThreshold": {
+        "title": "Umbral mínimo de cobertura (%)",
+        "type": "number",
+        "default": 80
+      },
+      "hasLint": {
+        "title": "Lint activo",
+        "type": "boolean",
+        "default": true
+      },
+      "hasSast": {
+        "title": "SAST activo (Bandit)",
+        "type": "boolean",
+        "default": true
+      },
+      "hasDependencyScan": {
+        "title": "Scan de dependencias activo",
+        "type": "boolean",
+        "default": true
+      },
+      "hasSecretScan": {
+        "title": "Gitleaks activo",
+        "type": "boolean",
+        "default": true
+      },
+      "runnerType": {
+        "title": "Runner",
+        "type": "string",
+        "default": "ubuntu-latest",
+        "enum": ["ubuntu-latest", "ubuntu-22.04", "self-hosted"]
+      },
+      "successRateLast30d": {
+        "title": "Tasa de éxito (30 días %)",
+        "type": "number"
+      },
+      "avgDurationLast30dSec": {
+        "title": "Duración promedio 30d (seg)",
+        "type": "number"
+      }
+    },
+    "required": ["workflowFile"]
+  },
+  "mirrorProperties": {},
+  "calculationProperties": {
+    "coveragePassing": {
+      "title": "Cobertura OK",
+      "calculation": ".properties.coveragePercent >= .properties.coverageThreshold",
+      "type": "boolean"
+    }
+  },
+  "relations": {
+    "repository": {
+      "title": "Repositorio",
+      "target": "githubRepository",
+      "required": true,
+      "many": false
+    }
+  }
+}

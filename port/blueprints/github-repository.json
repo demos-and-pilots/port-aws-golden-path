@@ -1,0 +1,109 @@
+{
+  "identifier": "githubRepository",
+  "title": "GitHub Repository",
+  "description": "Repositorio de código fuente en GitHub con configuración estándar de la organización.",
+  "icon": "Github",
+  "schema": {
+    "properties": {
+      "repoUrl": {
+        "title": "URL del repositorio",
+        "type": "string",
+        "format": "url",
+        "description": "URL completa del repositorio en GitHub"
+      },
+      "defaultBranch": {
+        "title": "Rama principal",
+        "type": "string",
+        "default": "main"
+      },
+      "visibility": {
+        "title": "Visibilidad",
+        "type": "string",
+        "enum": ["private", "internal", "public"],
+        "enumColors": {
+          "private": "green",
+          "internal": "blue",
+          "public": "red"
+        },
+        "default": "private"
+      },
+      "language": {
+        "title": "Lenguaje principal",
+        "type": "string",
+        "enum": ["python", "nodejs", "java", "go", "typescript"],
+        "enumColors": {
+          "python": "blue",
+          "nodejs": "green",
+          "java": "orange",
+          "go": "teal",
+          "typescript": "blue"
+        }
+      },
+      "branchProtection": {
+        "title": "Branch protection activa",
+        "type": "boolean",
+        "default": true
+      },
+      "requiredReviewers": {
+        "title": "Reviewers requeridos",
+        "type": "number",
+        "default": 1,
+        "minimum": 1,
+        "maximum": 4
+      },
+      "hasCodeowners": {
+        "title": "Tiene CODEOWNERS",
+        "type": "boolean",
+        "default": false
+      },
+      "hasCiPipeline": {
+        "title": "Pipeline CI configurado",
+        "type": "boolean",
+        "default": false
+      },
+      "hasCdPipeline": {
+        "title": "Pipeline CD configurado",
+        "type": "boolean",
+        "default": false
+      },
+      "createdAt": {
+        "title": "Fecha de creación",
+        "type": "string",
+        "format": "date-time"
+      },
+      "lastPushAt": {
+        "title": "Último push",
+        "type": "string",
+        "format": "date-time"
+      },
+      "openPRs": {
+        "title": "PRs abiertos",
+        "type": "number",
+        "default": 0
+      }
+    },
+    "required": ["repoUrl", "language", "visibility"]
+  },
+  "mirrorProperties": {},
+  "calculationProperties": {
+    "repoName": {
+      "title": "Nombre del repositorio",
+      "calculation": ".properties.repoUrl | split(\"/\") | last",
+      "type": "string"
+    }
+  },
+  "relations": {
+    "team": {
+      "title": "Squad propietario",
+      "target": "squad",
+      "required": true,
+      "many": false
+    },
+    "lambdaFunction": {
+      "title": "Funciones Lambda",
+      "target": "lambdaFunction",
+      "required": false,
+      "many": true
+    }
+  }
+}

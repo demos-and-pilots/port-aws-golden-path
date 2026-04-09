@@ -1,0 +1,233 @@
+name: "[Port] Crear repositorio GitHub"
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo_name:
+        description: "Nombre del repositorio (kebab-case)"
+        required: true
+        type: string
+      description:
+        description: "Descripción del servicio"
+        required: true
+        type: string
+      squad:
+        description: "Identificador del squad en Port"
+        required: true
+        type: string
+      language:
+        description: "Lenguaje principal (python3.12 | nodejs20.x | java21)"
+        required: true
+        type: string
+        default: "python3.12"
+      data_classification:
+        description: "Clasificación de datos"
+        required: true
+        type: string
+        default: "internal"
+      required_reviewers:
+        description: "Número de reviewers requeridos"
+        required: false
+        type: number
+        default: 1
+      include_cd_pipeline:
+        description: "Incluir pipeline CD"
+        required: false
+        type: boolean
+        default: true
+      aws_region:
+        description: "Región AWS"
+        required: false
+        type: string
+        default: "us-east-1"
+      port_run_id:
+        description: "Port Run ID para actualizar el estado"
+        required: true
+        type: string
+      port_entity_id:
+        description: "Port Entity ID (si aplica)"
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  create-repository:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_ORG_TOKEN }}
+      GITHUB_ORG: ${{ secrets.GITHUB_ORG }}
+      PORT_CLIENT_ID: ${{ secrets.PORT_CLIENT_ID }}
+      PORT_CLIENT_SECRET: ${{ secrets.PORT_CLIENT_SECRET }}
+
+    steps:
+      - name: Obtener token de Port
+        id: port-token
+        run: |
+          TOKEN=$(curl -s -X POST \
+            "https://api.getport.io/v1/auth/access_token" \
+            -H "Content-Type: application/json" \
+            -d '{"clientId":"'"$PORT_CLIENT_ID"'","clientSecret":"'"$PORT_CLIENT_SECRET"'"}' \
+            | jq -r '.accessToken')
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Notificar inicio en Port
+        run: |
+          curl -s -X PATCH \
+            "https://api.getport.io/v1/actions/runs/${{ inputs.port_run_id }}" \
+            -H "Authorization: Bearer ${{ steps.port-token.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"IN_PROGRESS","message":{"run_status":"Creando repositorio ${{ inputs.repo_name }}..."}}'
+
+      - name: Verificar que el nombre no existe
+        run: |
+          STATUS=$(gh api "repos/$GITHUB_ORG/${{ inputs.repo_name }}" \
+            --jq '.name' 2>/dev/null || echo "NOT_FOUND")
+          if [ "$STATUS" != "NOT_FOUND" ]; then
+            echo "ERROR: El repositorio ${{ inputs.repo_name }} ya existe en la organización."
+            exit 1
+          fi
+
+      - name: Seleccionar template según lenguaje
+        id: select-template
+        run: |
+          case "${{ inputs.language }}" in
+            python3.12) echo "template=lambda-python-template" >> $GITHUB_OUTPUT ;;
+            nodejs20.x) echo "template=lambda-nodejs-template" >> $GITHUB_OUTPUT ;;
+            java21)     echo "template=lambda-java-template" >> $GITHUB_OUTPUT ;;
+            *)          echo "template=lambda-python-template" >> $GITHUB_OUTPUT ;;
+          esac
+
+      - name: Crear repositorio desde template
+        id: create-repo
+        run: |
+          REPO_URL=$(gh api \
+            --method POST \
+            "/orgs/$GITHUB_ORG/repos" \
+            -f name="${{ inputs.repo_name }}" \
+            -f description="${{ inputs.description }}" \
+            -f visibility="private" \
+            -F has_issues=true \
+            -F has_projects=false \
+            -F has_wiki=false \
+            -F auto_init=false \
+            --jq '.html_url')
+
+          # Copiar template al nuevo repo
+          gh api \
+            --method POST \
+            "/repos/$GITHUB_ORG/${{ steps.select-template.outputs.template }}/generate" \
+            -f owner="$GITHUB_ORG" \
+            -f name="${{ inputs.repo_name }}" \
+            -f description="${{ inputs.description }}" \
+            -F private=true 2>/dev/null || true
+
+          echo "repo_url=$REPO_URL" >> $GITHUB_OUTPUT
+          sleep 3  # Esperar a que GitHub cree los archivos iniciales
+
+      - name: Configurar branch protection en main
+        run: |
+          gh api \
+            --method PUT \
+            "/repos/$GITHUB_ORG/${{ inputs.repo_name }}/branches/main/protection" \
+            --input - <<EOF
+          {
+            "required_status_checks": {
+              "strict": true,
+              "contexts": ["ci / lint", "ci / test", "ci / security"]
+            },
+            "enforce_admins": false,
+            "required_pull_request_reviews": {
+              "required_approving_review_count": ${{ inputs.required_reviewers }},
+              "dismiss_stale_reviews": true,
+              "require_code_owner_reviews": true
+            },
+            "restrictions": null,
+            "allow_force_pushes": false,
+            "allow_deletions": false
+          }
+          EOF
+
+      - name: Crear archivo CODEOWNERS
+        run: |
+          gh api \
+            --method PUT \
+            "/repos/$GITHUB_ORG/${{ inputs.repo_name }}/contents/CODEOWNERS" \
+            -f message="chore: add CODEOWNERS [skip ci]" \
+            -f content="$(echo -n "* @$GITHUB_ORG/${{ inputs.squad }}" | base64)"
+
+      - name: Agregar topic de clasificación de datos
+        run: |
+          gh api \
+            --method PUT \
+            "/repos/$GITHUB_ORG/${{ inputs.repo_name }}/topics" \
+            -f topics[]="${{ inputs.data_classification }}" \
+            -f topics[]="${{ inputs.squad }}" \
+            -f topics[]="lambda" \
+            -f topics[]="${{ inputs.language }}"
+
+      - name: Eliminar workflow CD si no fue solicitado
+        if: ${{ inputs.include_cd_pipeline == 'false' }}
+        run: |
+          gh api \
+            --method DELETE \
+            "/repos/$GITHUB_ORG/${{ inputs.repo_name }}/contents/.github/workflows/cd.yml" \
+            -f message="chore: remove CD pipeline (not requested)" \
+            -f sha="$(gh api /repos/$GITHUB_ORG/${{ inputs.repo_name }}/contents/.github/workflows/cd.yml --jq '.sha')" \
+          2>/dev/null || true
+
+      - name: Crear entidad en Port - Repositorio
+        id: create-port-entity
+        run: |
+          ENTITY_ID="${{ inputs.repo_name }}"
+          curl -s -X POST \
+            "https://api.getport.io/v1/blueprints/githubRepository/entities" \
+            -H "Authorization: Bearer ${{ steps.port-token.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "identifier": "'"$ENTITY_ID"'",
+              "title": "${{ inputs.repo_name }}",
+              "properties": {
+                "repoUrl": "${{ steps.create-repo.outputs.repo_url }}",
+                "defaultBranch": "main",
+                "visibility": "private",
+                "language": "${{ inputs.language }}",
+                "branchProtection": true,
+                "requiredReviewers": ${{ inputs.required_reviewers }},
+                "hasCodeowners": true,
+                "hasCiPipeline": true,
+                "hasCdPipeline": ${{ inputs.include_cd_pipeline }},
+                "createdAt": "'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"
+              },
+              "relations": {
+                "team": "${{ inputs.squad }}"
+              }
+            }'
+          echo "entity_id=$ENTITY_ID" >> $GITHUB_OUTPUT
+
+      - name: Actualizar Port - Éxito
+        if: success()
+        run: |
+          curl -s -X PATCH \
+            "https://api.getport.io/v1/actions/runs/${{ inputs.port_run_id }}" \
+            -H "Authorization: Bearer ${{ steps.port-token.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "status": "SUCCESS",
+              "message": {
+                "run_status": "Repositorio creado exitosamente",
+                "repo_url": "${{ steps.create-repo.outputs.repo_url }}",
+                "entity_id": "${{ steps.create-port-entity.outputs.entity_id }}"
+              }
+            }'
+
+      - name: Actualizar Port - Error
+        if: failure()
+        run: |
+          curl -s -X PATCH \
+            "https://api.getport.io/v1/actions/runs/${{ inputs.port_run_id }}" \
+            -H "Authorization: Bearer ${{ steps.port-token.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"FAILURE","message":{"run_status":"Error al crear el repositorio. Revisa los logs del workflow."}}'

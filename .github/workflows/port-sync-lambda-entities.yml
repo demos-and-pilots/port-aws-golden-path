@@ -1,0 +1,156 @@
+name: "[Port] Sync Lambda entities"
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # Cada 15 minutos
+  workflow_dispatch:          # Ejecución manual
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  sync-dev:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar credenciales AWS - Dev
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_DEV }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Obtener token de Port
+        id: port-token
+        env:
+          PORT_CLIENT_ID: ${{ secrets.PORT_CLIENT_ID }}
+          PORT_CLIENT_SECRET: ${{ secrets.PORT_CLIENT_SECRET }}
+        run: |
+          TOKEN=$(curl -s -X POST \
+            "https://api.getport.io/v1/auth/access_token" \
+            -H "Content-Type: application/json" \
+            -d '{"clientId":"'"$PORT_CLIENT_ID"'","clientSecret":"'"$PORT_CLIENT_SECRET"'"}' \
+            | jq -r '.accessToken')
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Listar funciones Lambda en dev y sincronizar
+        run: |
+          FUNCTIONS=$(aws lambda list-functions \
+            --query 'Functions[*].{name:FunctionName,runtime:Runtime,memory:MemorySize,timeout:Timeout,role:Role}' \
+            --output json)
+
+          echo "$FUNCTIONS" | jq -c '.[]' | while read -r fn; do
+            NAME=$(echo "$fn" | jq -r '.name')
+            RUNTIME=$(echo "$fn" | jq -r '.runtime')
+            MEMORY=$(echo "$fn" | jq -r '.memory')
+            TIMEOUT=$(echo "$fn" | jq -r '.timeout')
+
+            # Obtener métricas de CloudWatch (últimas 24h)
+            END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            START_TIME=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || \
+                         date -u -v-7d +%Y-%m-%dT%H:%M:%SZ)
+
+            ERRORS=$(aws cloudwatch get-metric-statistics \
+              --namespace AWS/Lambda \
+              --metric-name Errors \
+              --dimensions Name=FunctionName,Value="$NAME" \
+              --start-time "$START_TIME" \
+              --end-time "$END_TIME" \
+              --period 604800 \
+              --statistics Sum \
+              --query 'Datapoints[0].Sum' \
+              --output text 2>/dev/null || echo "0")
+
+            INVOCATIONS=$(aws cloudwatch get-metric-statistics \
+              --namespace AWS/Lambda \
+              --metric-name Invocations \
+              --dimensions Name=FunctionName,Value="$NAME" \
+              --start-time "$START_TIME" \
+              --end-time "$END_TIME" \
+              --period 604800 \
+              --statistics Sum \
+              --query 'Datapoints[0].Sum' \
+              --output text 2>/dev/null || echo "0")
+
+            DURATION=$(aws cloudwatch get-metric-statistics \
+              --namespace AWS/Lambda \
+              --metric-name Duration \
+              --dimensions Name=FunctionName,Value="$NAME" \
+              --start-time "$START_TIME" \
+              --end-time "$END_TIME" \
+              --period 604800 \
+              --statistics Average \
+              --query 'Datapoints[0].Average' \
+              --output text 2>/dev/null || echo "0")
+
+            ERROR_RATE=0
+            if [ "$INVOCATIONS" != "None" ] && [ "$INVOCATIONS" != "0" ] && [ "$ERRORS" != "None" ]; then
+              ERROR_RATE=$(echo "scale=2; ($ERRORS / $INVOCATIONS) * 100" | bc 2>/dev/null || echo "0")
+            fi
+
+            # Upsert en Port
+            curl -s -X POST \
+              "https://api.getport.io/v1/blueprints/lambdaFunction/entities?upsert=true&merge=true" \
+              -H "Authorization: Bearer ${{ steps.port-token.outputs.token }}" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "identifier": "'"${NAME}-dev"'",
+                "title": "'"$NAME"' (dev)",
+                "properties": {
+                  "functionName": "'"$NAME"'",
+                  "runtime": "'"$RUNTIME"'",
+                  "memorySize": '"$MEMORY"',
+                  "timeout": '"$TIMEOUT"',
+                  "environment": "dev",
+                  "awsRegion": "'"${{ vars.AWS_REGION }}"'",
+                  "invocations7d": '"${INVOCATIONS:-0}"',
+                  "errorRate7d": '"${ERROR_RATE:-0}"',
+                  "avgDurationMs": '"${DURATION:-0}"'
+                }
+              }' > /dev/null
+
+            echo "Sincronizado: $NAME (dev)"
+          done
+
+  sync-github-metadata:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_ORG_TOKEN }}
+      GITHUB_ORG: ${{ secrets.GITHUB_ORG }}
+      PORT_CLIENT_ID: ${{ secrets.PORT_CLIENT_ID }}
+      PORT_CLIENT_SECRET: ${{ secrets.PORT_CLIENT_SECRET }}
+    steps:
+      - name: Obtener token de Port
+        id: port-token
+        run: |
+          TOKEN=$(curl -s -X POST \
+            "https://api.getport.io/v1/auth/access_token" \
+            -H "Content-Type: application/json" \
+            -d '{"clientId":"'"$PORT_CLIENT_ID"'","clientSecret":"'"$PORT_CLIENT_SECRET"'"}' \
+            | jq -r '.accessToken')
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Sincronizar métricas de repositorios
+        run: |
+          gh api "/orgs/$GITHUB_ORG/repos" --paginate \
+            --jq '.[] | {name:.name, url:.html_url, pushed_at:.pushed_at, open_issues:.open_issues_count}' \
+          | while IFS= read -r repo; do
+            NAME=$(echo "$repo" | jq -r '.name')
+            URL=$(echo "$repo" | jq -r '.url')
+            PUSHED=$(echo "$repo" | jq -r '.pushed_at')
+
+            curl -s -X POST \
+              "https://api.getport.io/v1/blueprints/githubRepository/entities?upsert=true&merge=true" \
+              -H "Authorization: Bearer ${{ steps.port-token.outputs.token }}" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "identifier": "'"$NAME"'",
+                "title": "'"$NAME"'",
+                "properties": {
+                  "repoUrl": "'"$URL"'",
+                  "lastPushAt": "'"$PUSHED"'"
+                }
+              }' > /dev/null
+          done

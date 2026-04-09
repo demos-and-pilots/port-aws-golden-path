@@ -1,0 +1,36 @@
+{
+  "identifier": "squad",
+  "title": "Squad",
+  "description": "Equipo de desarrollo propietario de servicios y repositorios.",
+  "icon": "Teams",
+  "schema": {
+    "properties": {
+      "email": {
+        "title": "Email del squad",
+        "type": "string",
+        "format": "email"
+      },
+      "slackChannel": {
+        "title": "Canal de Slack",
+        "type": "string"
+      },
+      "oncallRotation": {
+        "title": "Rotación on-call",
+        "type": "string"
+      },
+      "techLead": {
+        "title": "Tech Lead",
+        "type": "string"
+      },
+      "confluenceSpace": {
+        "title": "Espacio en Confluence",
+        "type": "string",
+        "format": "url"
+      }
+    },
+    "required": ["email", "slackChannel"]
+  },
+  "mirrorProperties": {},
+  "calculationProperties": {},
+  "relations": {}
+}

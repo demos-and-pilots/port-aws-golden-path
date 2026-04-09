@@ -1,0 +1,98 @@
+{
+  "identifier": "provision_lambda_service",
+  "title": "Nuevo servicio Lambda (completo)",
+  "description": "Aprovisiona end-to-end: repositorio GitHub + pipelines CI/CD + función Lambda en dev + IAM Role OIDC + CloudWatch Logs.",
+  "icon": "Lambda",
+  "trigger": {
+    "type": "self-service",
+    "operation": "CREATE",
+    "userInputs": {
+      "properties": {
+        "service_name": {
+          "title": "Nombre del servicio",
+          "type": "string",
+          "description": "kebab-case. Ej: payments-processor. Se usará como nombre del repo y de la Lambda.",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "minLength": 3,
+          "maxLength": 40
+        },
+        "description": {
+          "title": "Descripción",
+          "type": "string",
+          "maxLength": 200
+        },
+        "squad": {
+          "title": "Squad propietario",
+          "type": "string",
+          "blueprint": "squad",
+          "format": "entity"
+        },
+        "runtime": {
+          "title": "Runtime",
+          "type": "string",
+          "enum": ["python3.12", "nodejs20.x", "java21"],
+          "default": "python3.12"
+        },
+        "memory_mb": {
+          "title": "Memoria Lambda (MB)",
+          "type": "number",
+          "enum": [128, 256, 512, 1024, 2048],
+          "default": 256
+        },
+        "timeout_seconds": {
+          "title": "Timeout (seg)",
+          "type": "number",
+          "default": 30,
+          "minimum": 3,
+          "maximum": 900
+        },
+        "data_classification": {
+          "title": "Clasificación de datos",
+          "type": "string",
+          "enum": ["public", "internal", "confidential", "restricted"],
+          "default": "internal"
+        },
+        "aws_region": {
+          "title": "Región AWS",
+          "type": "string",
+          "enum": ["us-east-1", "us-west-2", "eu-west-1"],
+          "default": "us-east-1"
+        },
+        "required_reviewers": {
+          "title": "Reviewers requeridos (PR)",
+          "type": "number",
+          "enum": [1, 2, 3],
+          "default": 1
+        }
+      },
+      "required": [
+        "service_name",
+        "description",
+        "squad",
+        "runtime",
+        "data_classification"
+      ]
+    },
+    "blueprintIdentifier": "lambdaFunction"
+  },
+  "invocationMethod": {
+    "type": "GITHUB",
+    "org": "{{ .secrets.GITHUB_ORG }}",
+    "repo": "port-actions",
+    "workflow": "provision-lambda-service.yml",
+    "workflowInputs": {
+      "service_name": "{{ .inputs.service_name }}",
+      "description": "{{ .inputs.description }}",
+      "squad": "{{ .inputs.squad.identifier }}",
+      "runtime": "{{ .inputs.runtime }}",
+      "memory_mb": "{{ .inputs.memory_mb }}",
+      "timeout_seconds": "{{ .inputs.timeout_seconds }}",
+      "data_classification": "{{ .inputs.data_classification }}",
+      "aws_region": "{{ .inputs.aws_region }}",
+      "required_reviewers": "{{ .inputs.required_reviewers }}",
+      "port_run_id": "{{ .run.id }}"
+    },
+    "reportWorkflowStatus": true
+  },
+  "requiredApproval": false
+}

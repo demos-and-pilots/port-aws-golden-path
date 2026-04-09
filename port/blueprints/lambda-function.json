@@ -1,0 +1,170 @@
+{
+  "identifier": "lambdaFunction",
+  "title": "Lambda Function",
+  "description": "Función AWS Lambda desplegada con pipeline CI/CD automatizado.",
+  "icon": "Lambda",
+  "schema": {
+    "properties": {
+      "functionName": {
+        "title": "Nombre de la función",
+        "type": "string",
+        "description": "Nombre único de la función en AWS Lambda"
+      },
+      "runtime": {
+        "title": "Runtime",
+        "type": "string",
+        "enum": ["python3.12", "python3.11", "nodejs20.x", "nodejs18.x", "java21", "java17", "go1.x"],
+        "enumColors": {
+          "python3.12": "blue",
+          "python3.11": "blue",
+          "nodejs20.x": "green",
+          "nodejs18.x": "green",
+          "java21": "orange",
+          "java17": "orange",
+          "go1.x": "teal"
+        }
+      },
+      "memorySize": {
+        "title": "Memoria (MB)",
+        "type": "number",
+        "default": 256,
+        "enum": [128, 256, 512, 1024, 2048, 3008]
+      },
+      "timeout": {
+        "title": "Timeout (segundos)",
+        "type": "number",
+        "default": 30,
+        "maximum": 900
+      },
+      "environment": {
+        "title": "Ambiente activo",
+        "type": "string",
+        "enum": ["dev", "staging", "production"],
+        "enumColors": {
+          "dev": "blue",
+          "staging": "yellow",
+          "production": "green"
+        }
+      },
+      "deployStatus": {
+        "title": "Estado del último deploy",
+        "type": "string",
+        "enum": ["success", "failed", "in_progress", "pending"],
+        "enumColors": {
+          "success": "green",
+          "failed": "red",
+          "in_progress": "blue",
+          "pending": "yellow"
+        }
+      },
+      "lastDeployedAt": {
+        "title": "Último despliegue",
+        "type": "string",
+        "format": "date-time"
+      },
+      "lastDeployedVersion": {
+        "title": "Versión desplegada",
+        "type": "string"
+      },
+      "currentAlias": {
+        "title": "Alias activo",
+        "type": "string",
+        "default": "live"
+      },
+      "dataClassification": {
+        "title": "Clasificación de datos",
+        "type": "string",
+        "enum": ["public", "internal", "confidential", "restricted"],
+        "enumColors": {
+          "public": "green",
+          "internal": "blue",
+          "confidential": "yellow",
+          "restricted": "red"
+        }
+      },
+      "awsRegion": {
+        "title": "Región AWS",
+        "type": "string",
+        "default": "us-east-1"
+      },
+      "awsAccountId": {
+        "title": "AWS Account ID",
+        "type": "string"
+      },
+      "logGroupArn": {
+        "title": "CloudWatch Log Group",
+        "type": "string"
+      },
+      "iamRoleArn": {
+        "title": "IAM Role ARN",
+        "type": "string"
+      },
+      "hasOidcRole": {
+        "title": "OIDC Role configurado",
+        "type": "boolean",
+        "default": false
+      },
+      "hasSecrets": {
+        "title": "Secrets en Secrets Manager",
+        "type": "boolean",
+        "default": false
+      },
+      "invocations7d": {
+        "title": "Invocaciones (7 días)",
+        "type": "number"
+      },
+      "errorRate7d": {
+        "title": "Error rate (7 días %)",
+        "type": "number"
+      },
+      "avgDurationMs": {
+        "title": "Duración promedio (ms)",
+        "type": "number"
+      }
+    },
+    "required": ["functionName", "runtime", "environment", "dataClassification"]
+  },
+  "mirrorProperties": {
+    "squadName": {
+      "title": "Squad",
+      "path": "repository.team.title"
+    },
+    "repoUrl": {
+      "title": "Repositorio",
+      "path": "repository.properties.repoUrl"
+    }
+  },
+  "calculationProperties": {
+    "awsConsoleUrl": {
+      "title": "AWS Console",
+      "calculation": "\"https://console.aws.amazon.com/lambda/home?region=\" + .properties.awsRegion + \"#/functions/\" + .properties.functionName",
+      "type": "string",
+      "format": "url"
+    },
+    "isHealthy": {
+      "title": "Saludable",
+      "calculation": ".properties.errorRate7d < 1 and .properties.deployStatus == \"success\"",
+      "type": "boolean"
+    }
+  },
+  "relations": {
+    "repository": {
+      "title": "Repositorio fuente",
+      "target": "githubRepository",
+      "required": true,
+      "many": false
+    },
+    "ciPipeline": {
+      "title": "Pipeline CI",
+      "target": "ciPipeline",
+      "required": false,
+      "many": false
+    },
+    "cdPipeline": {
+      "title": "Pipeline CD",
+      "target": "cdPipeline",
+      "required": false,
+      "many": false
+    }
+  }
+}

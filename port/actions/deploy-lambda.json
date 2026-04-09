@@ -1,0 +1,66 @@
+{
+  "identifier": "deploy_lambda",
+  "title": "Desplegar Lambda",
+  "description": "Dispara el pipeline CD para desplegar la función Lambda al ambiente seleccionado.",
+  "icon": "Lambda",
+  "trigger": {
+    "type": "self-service",
+    "operation": "DAY-2",
+    "userInputs": {
+      "properties": {
+        "target_environment": {
+          "title": "Ambiente destino",
+          "type": "string",
+          "enum": ["dev", "staging", "production"],
+          "enumColors": {
+            "dev": "blue",
+            "staging": "yellow",
+            "production": "green"
+          },
+          "default": "dev"
+        },
+        "git_ref": {
+          "title": "Branch / Tag / SHA",
+          "type": "string",
+          "default": "main",
+          "description": "Referencia git a desplegar. Usa 'main' para el último código aprobado."
+        },
+        "skip_canary": {
+          "title": "Omitir canary deploy",
+          "type": "boolean",
+          "default": false,
+          "description": "Solo aplica para producción. Despliega directamente al 100% del tráfico."
+        },
+        "deploy_reason": {
+          "title": "Motivo del deploy",
+          "type": "string",
+          "description": "Describe brevemente qué cambios incluye este despliegue (requerido para producción)",
+          "maxLength": 300
+        }
+      },
+      "required": ["target_environment", "git_ref", "deploy_reason"]
+    },
+    "blueprintIdentifier": "lambdaFunction"
+  },
+  "invocationMethod": {
+    "type": "GITHUB",
+    "org": "{{ .secrets.GITHUB_ORG }}",
+    "repo": "{{ .entity.relations.repository.properties.repoName }}",
+    "workflow": "cd.yml",
+    "workflowInputs": {
+      "target_environment": "{{ .inputs.target_environment }}",
+      "git_ref": "{{ .inputs.git_ref }}",
+      "skip_canary": "{{ .inputs.skip_canary }}",
+      "deploy_reason": "{{ .inputs.deploy_reason }}",
+      "function_name": "{{ .entity.properties.functionName }}",
+      "aws_region": "{{ .entity.properties.awsRegion }}",
+      "port_run_id": "{{ .run.id }}",
+      "port_entity_id": "{{ .entity.identifier }}"
+    },
+    "reportWorkflowStatus": true
+  },
+  "requiredApproval": {
+    "type": "ANY_TEAM_MEMBER",
+    "condition": "{{ .inputs.target_environment == 'production' }}"
+  }
+}

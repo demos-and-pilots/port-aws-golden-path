@@ -1,0 +1,56 @@
+{
+  "identifier": "rollback_lambda",
+  "title": "Rollback Lambda",
+  "description": "Revierte la función Lambda a la versión anterior publicada en el alias 'live'.",
+  "icon": "Alert",
+  "trigger": {
+    "type": "self-service",
+    "operation": "DAY-2",
+    "userInputs": {
+      "properties": {
+        "target_environment": {
+          "title": "Ambiente a revertir",
+          "type": "string",
+          "enum": ["dev", "staging", "production"],
+          "enumColors": {
+            "dev": "blue",
+            "staging": "yellow",
+            "production": "red"
+          }
+        },
+        "rollback_reason": {
+          "title": "Motivo del rollback",
+          "type": "string",
+          "description": "Describe el incidente que requiere el rollback",
+          "minLength": 10,
+          "maxLength": 500
+        },
+        "notify_slack": {
+          "title": "Notificar al canal de Slack del squad",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": ["target_environment", "rollback_reason"]
+    },
+    "blueprintIdentifier": "lambdaFunction"
+  },
+  "invocationMethod": {
+    "type": "GITHUB",
+    "org": "{{ .secrets.GITHUB_ORG }}",
+    "repo": "port-actions",
+    "workflow": "rollback-lambda.yml",
+    "workflowInputs": {
+      "function_name": "{{ .entity.properties.functionName }}",
+      "target_environment": "{{ .inputs.target_environment }}",
+      "aws_region": "{{ .entity.properties.awsRegion }}",
+      "rollback_reason": "{{ .inputs.rollback_reason }}",
+      "notify_slack": "{{ .inputs.notify_slack }}",
+      "slack_channel": "{{ .entity.relations.repository.relations.team.properties.slackChannel }}",
+      "port_run_id": "{{ .run.id }}",
+      "port_entity_id": "{{ .entity.identifier }}"
+    },
+    "reportWorkflowStatus": true
+  },
+  "requiredApproval": false
+}

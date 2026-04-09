@@ -1,0 +1,100 @@
+{
+  "identifier": "create_github_repository",
+  "title": "Crear Repositorio GitHub",
+  "description": "Aprovisiona un repositorio GitHub con estructura estándar, branch protection, CODEOWNERS, y pipelines CI/CD listos.",
+  "icon": "Github",
+  "trigger": {
+    "type": "self-service",
+    "operation": "CREATE",
+    "userInputs": {
+      "properties": {
+        "repo_name": {
+          "title": "Nombre del repositorio",
+          "type": "string",
+          "description": "Nombre en kebab-case. Ej: payments-processor",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "minLength": 3,
+          "maxLength": 60
+        },
+        "description": {
+          "title": "Descripción del servicio",
+          "type": "string",
+          "description": "Qué hace este servicio. Usado en el README y en el catálogo.",
+          "maxLength": 200
+        },
+        "squad": {
+          "title": "Squad propietario",
+          "type": "string",
+          "blueprint": "squad",
+          "format": "entity"
+        },
+        "language": {
+          "title": "Lenguaje principal",
+          "type": "string",
+          "enum": ["python3.12", "nodejs20.x", "java21"],
+          "enumColors": {
+            "python3.12": "blue",
+            "nodejs20.x": "green",
+            "java21": "orange"
+          },
+          "default": "python3.12"
+        },
+        "data_classification": {
+          "title": "Clasificación de datos",
+          "type": "string",
+          "enum": ["public", "internal", "confidential", "restricted"],
+          "enumColors": {
+            "public": "green",
+            "internal": "blue",
+            "confidential": "yellow",
+            "restricted": "red"
+          },
+          "default": "internal",
+          "description": "Nivel de sensibilidad de los datos que maneja el servicio"
+        },
+        "required_reviewers": {
+          "title": "Reviewers requeridos para PR",
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 4,
+          "enum": [1, 2, 3, 4]
+        },
+        "include_cd_pipeline": {
+          "title": "Incluir pipeline CD",
+          "type": "boolean",
+          "default": true,
+          "description": "Agrega workflow de CD para deploy a Lambda (dev → staging → prod)"
+        },
+        "aws_region": {
+          "title": "Región AWS",
+          "type": "string",
+          "default": "us-east-1",
+          "enum": ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"]
+        }
+      },
+      "required": ["repo_name", "description", "squad", "language", "data_classification"]
+    },
+    "blueprintIdentifier": "githubRepository"
+  },
+  "invocationMethod": {
+    "type": "GITHUB",
+    "org": "{{ .secrets.GITHUB_ORG }}",
+    "repo": "port-actions",
+    "workflow": "create-github-repository.yml",
+    "workflowInputs": {
+      "repo_name": "{{ .inputs.repo_name }}",
+      "description": "{{ .inputs.description }}",
+      "squad": "{{ .inputs.squad.identifier }}",
+      "language": "{{ .inputs.language }}",
+      "data_classification": "{{ .inputs.data_classification }}",
+      "required_reviewers": "{{ .inputs.required_reviewers }}",
+      "include_cd_pipeline": "{{ .inputs.include_cd_pipeline }}",
+      "aws_region": "{{ .inputs.aws_region }}",
+      "port_run_id": "{{ .run.id }}",
+      "port_entity_id": "{{ .entity.identifier }}"
+    },
+    "reportWorkflowStatus": true
+  },
+  "requiredApproval": false
+}

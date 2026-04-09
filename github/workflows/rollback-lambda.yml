@@ -1,0 +1,182 @@
+name: "[Port] Rollback Lambda"
+
+on:
+  workflow_dispatch:
+    inputs:
+      function_name:
+        description: "Nombre de la función Lambda"
+        required: true
+        type: string
+      target_environment:
+        description: "Ambiente a revertir (dev | staging | production)"
+        required: true
+        type: string
+      aws_region:
+        description: "Región AWS"
+        required: true
+        type: string
+        default: "us-east-1"
+      rollback_reason:
+        description: "Motivo del rollback"
+        required: true
+        type: string
+      notify_slack:
+        description: "Notificar en Slack"
+        required: false
+        type: boolean
+        default: true
+      slack_channel:
+        description: "Canal de Slack del squad"
+        required: false
+        type: string
+      port_run_id:
+        description: "Port Run ID"
+        required: true
+        type: string
+      port_entity_id:
+        description: "Port Entity ID"
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_environment }}
+    env:
+      PORT_CLIENT_ID: ${{ secrets.PORT_CLIENT_ID }}
+      PORT_CLIENT_SECRET: ${{ secrets.PORT_CLIENT_SECRET }}
+
+    steps:
+      - name: Obtener token de Port
+        id: port-token
+        run: |
+          TOKEN=$(curl -s -X POST \
+            "https://api.getport.io/v1/auth/access_token" \
+            -H "Content-Type: application/json" \
+            -d '{"clientId":"'"$PORT_CLIENT_ID"'","clientSecret":"'"$PORT_CLIENT_SECRET"'"}' \
+            | jq -r '.accessToken')
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Notificar inicio en Port
+        run: |
+          curl -s -X PATCH \
+            "https://api.getport.io/v1/actions/runs/${{ inputs.port_run_id }}" \
+            -H "Authorization: Bearer ${{ steps.port-token.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"IN_PROGRESS","message":{"run_status":"Iniciando rollback en ${{ inputs.target_environment }}..."}}'
+
+      - name: Configurar credenciales AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars[format('AWS_ROLE_{0}', upper(inputs.target_environment))] }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Obtener versión actual del alias live
+        id: current-version
+        run: |
+          FUNCTION="${{ inputs.function_name }}-${{ inputs.target_environment }}"
+          CURRENT=$(aws lambda get-alias \
+            --function-name "$FUNCTION" \
+            --name live \
+            --query 'FunctionVersion' \
+            --output text)
+          echo "current_version=$CURRENT" >> $GITHUB_OUTPUT
+          echo "function_name=$FUNCTION" >> $GITHUB_OUTPUT
+
+      - name: Obtener versión anterior para rollback
+        id: previous-version
+        run: |
+          FUNCTION="${{ steps.current-version.outputs.function_name }}"
+          CURRENT="${{ steps.current-version.outputs.current_version }}"
+
+          # Listar versiones y encontrar la inmediata anterior
+          PREVIOUS=$(aws lambda list-versions-by-function \
+            --function-name "$FUNCTION" \
+            --query "Versions[?Version!='\$LATEST' && Version!='$CURRENT'].Version" \
+            --output json \
+            | jq -r 'map(tonumber) | sort | last | tostring')
+
+          if [ -z "$PREVIOUS" ] || [ "$PREVIOUS" == "null" ]; then
+            echo "ERROR: No hay versión anterior disponible para rollback."
+            exit 1
+          fi
+
+          echo "previous_version=$PREVIOUS" >> $GITHUB_OUTPUT
+          echo "Rollback: versión $CURRENT → versión $PREVIOUS"
+
+      - name: Ejecutar rollback del alias live
+        run: |
+          aws lambda update-alias \
+            --function-name "${{ steps.current-version.outputs.function_name }}" \
+            --name live \
+            --function-version "${{ steps.previous-version.outputs.previous_version }}"
+
+          echo "Alias 'live' revertido a versión ${{ steps.previous-version.outputs.previous_version }}"
+
+      - name: Verificar que el alias apunta a la versión correcta
+        run: |
+          ACTIVE=$(aws lambda get-alias \
+            --function-name "${{ steps.current-version.outputs.function_name }}" \
+            --name live \
+            --query 'FunctionVersion' \
+            --output text)
+
+          if [ "$ACTIVE" != "${{ steps.previous-version.outputs.previous_version }}" ]; then
+            echo "ERROR: La verificación post-rollback falló. Alias activo: $ACTIVE"
+            exit 1
+          fi
+          echo "Verificación exitosa. Alias live = versión $ACTIVE"
+
+      - name: Notificar en Slack
+        if: ${{ inputs.notify_slack == 'true' && inputs.slack_channel != '' }}
+        run: |
+          curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "channel": "${{ inputs.slack_channel }}",
+              "text": ":rewind: *Rollback ejecutado*\n*Función:* `${{ inputs.function_name }}-${{ inputs.target_environment }}`\n*Versión:* `${{ steps.current-version.outputs.current_version }}` → `${{ steps.previous-version.outputs.previous_version }}`\n*Motivo:* ${{ inputs.rollback_reason }}\n*Ejecutado por:* ${{ github.actor }}"
+            }'
+
+      - name: Actualizar entidad en Port
+        run: |
+          curl -s -X PATCH \
+            "https://api.getport.io/v1/blueprints/lambdaFunction/entities/${{ inputs.port_entity_id }}" \
+            -H "Authorization: Bearer ${{ steps.port-token.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "properties": {
+                "deployStatus": "success",
+                "lastDeployedVersion": "${{ steps.previous-version.outputs.previous_version }}",
+                "lastDeployedAt": "'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"
+              }
+            }'
+
+      - name: Actualizar Port - Éxito
+        if: success()
+        run: |
+          curl -s -X PATCH \
+            "https://api.getport.io/v1/actions/runs/${{ inputs.port_run_id }}" \
+            -H "Authorization: Bearer ${{ steps.port-token.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "status": "SUCCESS",
+              "message": {
+                "run_status": "Rollback exitoso",
+                "reverted_from": "${{ steps.current-version.outputs.current_version }}",
+                "reverted_to": "${{ steps.previous-version.outputs.previous_version }}",
+                "environment": "${{ inputs.target_environment }}"
+              }
+            }'
+
+      - name: Actualizar Port - Error
+        if: failure()
+        run: |
+          curl -s -X PATCH \
+            "https://api.getport.io/v1/actions/runs/${{ inputs.port_run_id }}" \
+            -H "Authorization: Bearer ${{ steps.port-token.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"FAILURE","message":{"run_status":"El rollback falló. Intervención manual requerida. Revisa los logs del workflow."}}'

@@ -1,0 +1,124 @@
+{
+  "identifier": "cdPipeline",
+  "title": "CD Pipeline",
+  "description": "Pipeline de despliegue continuo a dev → staging → production con aprobaciones y canary deploy.",
+  "icon": "Github",
+  "schema": {
+    "properties": {
+      "workflowFile": {
+        "title": "Archivo de workflow",
+        "type": "string",
+        "default": ".github/workflows/cd.yml"
+      },
+      "lastDeployEnvironment": {
+        "title": "Último ambiente desplegado",
+        "type": "string",
+        "enum": ["dev", "staging", "production"],
+        "enumColors": {
+          "dev": "blue",
+          "staging": "yellow",
+          "production": "green"
+        }
+      },
+      "lastDeployStatus": {
+        "title": "Estado del último deploy",
+        "type": "string",
+        "enum": ["success", "failure", "cancelled", "in_progress", "waiting_approval"],
+        "enumColors": {
+          "success": "green",
+          "failure": "red",
+          "cancelled": "grey",
+          "in_progress": "blue",
+          "waiting_approval": "yellow"
+        }
+      },
+      "lastDeployAt": {
+        "title": "Fecha último deploy",
+        "type": "string",
+        "format": "date-time"
+      },
+      "lastDeployedSha": {
+        "title": "Git SHA desplegado",
+        "type": "string"
+      },
+      "usesOidc": {
+        "title": "Usa OIDC (sin long-lived keys)",
+        "type": "boolean",
+        "default": true
+      },
+      "canaryEnabled": {
+        "title": "Canary deploy activo",
+        "type": "boolean",
+        "default": true
+      },
+      "canaryTrafficPercent": {
+        "title": "Tráfico canary inicial (%)",
+        "type": "number",
+        "default": 10
+      },
+      "canaryWaitMinutes": {
+        "title": "Tiempo de observación canary (min)",
+        "type": "number",
+        "default": 5
+      },
+      "devAutoApprove": {
+        "title": "Dev auto-approve",
+        "type": "boolean",
+        "default": true
+      },
+      "stagingRequiredReviewers": {
+        "title": "Reviewers requeridos (staging)",
+        "type": "number",
+        "default": 1
+      },
+      "prodRequiredReviewers": {
+        "title": "Reviewers requeridos (prod)",
+        "type": "number",
+        "default": 2
+      },
+      "prodWaitTimerMinutes": {
+        "title": "Wait timer prod (min)",
+        "type": "number",
+        "default": 5
+      },
+      "rollbackEnabled": {
+        "title": "Rollback automático activo",
+        "type": "boolean",
+        "default": true
+      },
+      "deploysLast30d": {
+        "title": "Deploys últimos 30 días",
+        "type": "number"
+      },
+      "failedDeploysLast30d": {
+        "title": "Deploys fallidos (30 días)",
+        "type": "number"
+      },
+      "meanTimeToDeployMin": {
+        "title": "MTTD (minutos)",
+        "type": "number"
+      },
+      "meanTimeToRecoverMin": {
+        "title": "MTTR (minutos)",
+        "type": "number"
+      }
+    },
+    "required": ["workflowFile"]
+  },
+  "mirrorProperties": {},
+  "calculationProperties": {
+    "deploySuccessRate": {
+      "title": "Tasa de éxito deploy (%)",
+      "calculation": "if .properties.deploysLast30d > 0 then (((.properties.deploysLast30d - .properties.failedDeploysLast30d) / .properties.deploysLast30d) * 100) | round else 0 end",
+      "type": "number"
+    }
+  },
+  "relations": {
+    "repository": {
+      "title": "Repositorio",
+      "target": "githubRepository",
+      "required": true,
+      "many": false
+    }
+  }
+}
