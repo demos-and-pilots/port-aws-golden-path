@@ -36,11 +36,11 @@ jobs:
           echo "cost_center=$(echo $INPUTS | jq -r '.costCenter // "Unassigned"')" >> $GITHUB_OUTPUT
 
           # IAM Role-specific
-          echo "lambda_function_name=$(echo $INPUTS | jq -r '.lambdaFunctionName // \"\"')"      >> $GITHUB_OUTPUT
-          echo "lambda_region=$(echo $INPUTS | jq -r '.lambdaRegion // .awsRegion // \"us-east-1\"')" >> $GITHUB_OUTPUT
-          echo "github_org=$(echo $INPUTS | jq -r '.githubOrg // \"demos-and-pilots\"')"         >> $GITHUB_OUTPUT
-          echo "github_repo_pattern=$(echo $INPUTS | jq -r '.githubRepoPattern // \"*\"')"       >> $GITHUB_OUTPUT
-          echo "github_branch_pattern=$(echo $INPUTS | jq -r '.githubBranchPattern // \"refs/heads/main\"')" >> $GITHUB_OUTPUT
+          echo "lambda_function_name=$(echo $INPUTS | jq -r '.lambdaFunctionName // ""')"      >> $GITHUB_OUTPUT
+          echo "lambda_region=$(echo $INPUTS | jq -r '.lambdaRegion // .awsRegion // "us-east-1"')" >> $GITHUB_OUTPUT
+          echo "github_org=$(echo $INPUTS | jq -r '.githubOrg // "demos-and-pilots"')"         >> $GITHUB_OUTPUT
+          echo "github_repo_pattern=$(echo $INPUTS | jq -r '.githubRepoPattern // "*"')"       >> $GITHUB_OUTPUT
+          echo "github_branch_pattern=$(echo $INPUTS | jq -r '.githubBranchPattern // "refs/heads/main"')" >> $GITHUB_OUTPUT
 
           # VPC-specific
           echo "vpc_cidr=$(echo $INPUTS | jq -r '.vpcCidr // "10.0.0.0/16"')"          >> $GITHUB_OUTPUT
