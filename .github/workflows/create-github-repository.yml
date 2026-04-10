@@ -91,50 +91,34 @@ jobs:
             exit 1
           fi
 
-      - name: Seleccionar template según lenguaje
-        id: select-template
-        run: |
-          case "${{ inputs.language }}" in
-            python3.12) echo "template=lambda-python-template" >> $GITHUB_OUTPUT ;;
-            nodejs20.x) echo "template=lambda-nodejs-template" >> $GITHUB_OUTPUT ;;
-            java21)     echo "template=lambda-java-template" >> $GITHUB_OUTPUT ;;
-            *)          echo "template=lambda-python-template" >> $GITHUB_OUTPUT ;;
-          esac
-
-      - name: Crear repositorio desde template
+      - name: Crear repositorio
         id: create-repo
         run: |
           REPO_URL=$(gh api \
             --method POST \
-            "/repos/$GITHUB_ORG/${{ steps.select-template.outputs.template }}/generate" \
-            -f owner="$GITHUB_ORG" \
+            "/orgs/$GITHUB_ORG/repos" \
             -f name="${{ inputs.repo_name }}" \
             -f description="${{ inputs.description }}" \
-            -F private=false \
+            -f visibility="public" \
+            -F has_issues=true \
+            -F has_projects=false \
+            -F has_wiki=false \
+            -F auto_init=true \
             --jq '.html_url')
           echo "repo_url=$REPO_URL" >> $GITHUB_OUTPUT
 
-      - name: Esperar a que el repositorio y rama main estén disponibles
+      - name: Esperar a que la rama main esté disponible
         run: |
           for i in $(seq 1 12); do
             if gh api "repos/$GITHUB_ORG/${{ inputs.repo_name }}/branches/main" 2>/dev/null | grep -q '"name"'; then
-              echo "Repositorio y rama main disponibles."
+              echo "Rama main disponible."
               exit 0
             fi
             echo "Esperando... intento $i/12"
             sleep 5
           done
-          echo "ERROR: El repositorio no estuvo disponible después de 60 segundos."
+          echo "ERROR: La rama main no estuvo disponible después de 60 segundos."
           exit 1
-
-      - name: Configurar propiedades del repositorio
-        run: |
-          gh api \
-            --method PATCH \
-            "/repos/$GITHUB_ORG/${{ inputs.repo_name }}" \
-            -F has_issues=true \
-            -F has_projects=false \
-            -F has_wiki=false
 
       - name: Configurar branch protection en main
         run: |
@@ -176,16 +160,6 @@ jobs:
             -f topics[]="${{ inputs.squad }}" \
             -f topics[]="lambda" \
             -f topics[]="${{ inputs.language }}"
-
-      - name: Eliminar workflow CD si no fue solicitado
-        if: ${{ inputs.include_cd_pipeline == 'false' }}
-        run: |
-          gh api \
-            --method DELETE \
-            "/repos/$GITHUB_ORG/${{ inputs.repo_name }}/contents/.github/workflows/cd.yml" \
-            -f message="chore: remove CD pipeline (not requested)" \
-            -f sha="$(gh api /repos/$GITHUB_ORG/${{ inputs.repo_name }}/contents/.github/workflows/cd.yml --jq '.sha')" \
-          2>/dev/null || true
 
       - name: Crear entidad en Port - Repositorio
         id: create-port-entity
