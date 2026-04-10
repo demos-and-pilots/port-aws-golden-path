@@ -311,6 +311,24 @@ jobs:
             --query 'Stacks[0].StackId' --output text)
           echo "stack_id=${STACK_ID}" >> $GITHUB_OUTPUT
 
+          # Obtener el nombre del bucket desde los outputs del stack
+          BUCKET_NAME=$(aws cloudformation describe-stacks \
+            --stack-name "${STACK_NAME}" \
+            --region "${REGION}" \
+            --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' \
+            --output text)
+
+          # Crear carpeta "releases/" en el bucket (objeto vacío como prefijo)
+          aws s3api put-object \
+            --bucket "${BUCKET_NAME}" \
+            --key "releases/" \
+            --region "${REGION}"
+
+          # Cargar application/function.zip en releases/
+          aws s3 cp application/function.zip \
+            "s3://${BUCKET_NAME}/releases/function.zip" \
+            --region "${REGION}"
+
       - name: Desplegar Stack Completo (VPC + DynamoDB + Lambda)
       # if: steps.ctx.outputs.resource_type == 'VPC+DynamoDB+Lambda'
         if: ${{ steps.ctx.outputs.resource_type == 'VPC+DynamoDB+Lambda' }}
