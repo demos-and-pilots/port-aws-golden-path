@@ -1,4 +1,4 @@
-name: "[Port] Crear recurso en AWS (VPC, DynamoDB, Lambda, S3"
+name: "[Port] Crear recurso en AWS"
 on:
   workflow_dispatch:
     inputs:
@@ -85,6 +85,30 @@ jobs:
           echo "enable_lifecycle_expiration=$(echo $INPUTS | jq -r '.enableLifecycleExpiration // false')" >> $GITHUB_OUTPUT
           echo "expiration_days=$(echo $INPUTS | jq -r '.expirationInDays // 30')"                          >> $GITHUB_OUTPUT
           echo "noncurrent_expiration_days=$(echo $INPUTS | jq -r '.noncurrentVersionExpirationInDays // 30')" >> $GITHUB_OUTPUT
+
+      # ── DEBUG: Ver exactamente qué envió Port ───────────────────────────────
+      - name: "[DEBUG] Inspeccionar port_context recibido"
+        if: always()
+        run: |
+          echo "::group::1. RAW port_context (lo que Port envió a GitHub)"
+          echo '${{ inputs.port_context }}' | jq .
+          echo "::endgroup::"
+
+          echo "::group::2. Bloque .inputs extraído (INPUTS variable)"
+          echo '${{ inputs.port_context }}' | jq '.inputs'
+          echo "::endgroup::"
+
+          echo "::group::3. Tipo de .inputs (object | string | null)"
+          echo '${{ inputs.port_context }}' | jq '.inputs | type'
+          echo "::endgroup::"
+
+          echo "::group::4. Outputs del step ctx"
+          echo "resource_type      = '${{ steps.ctx.outputs.resource_type }}'"
+          echo "project_name       = '${{ steps.ctx.outputs.project_name }}'"
+          echo "lambda_fn_name     = '${{ steps.ctx.outputs.lambda_function_name }}'"
+          echo "lambda_region      = '${{ steps.ctx.outputs.lambda_region }}'"
+          echo "github_org         = '${{ steps.ctx.outputs.github_org }}'"
+          echo "::endgroup::"
 
       # ── 2. Notificar inicio a Port ───────────────────────────────────────────
       - name: Notificar inicio a Port
