@@ -79,6 +79,13 @@ jobs:
           echo "expiration_days=$(echo $INPUTS | jq -r '.expirationInDays // 30')"                          >> $GITHUB_OUTPUT
           echo "noncurrent_expiration_days=$(echo $INPUTS | jq -r '.noncurrentVersionExpirationInDays // 30')" >> $GITHUB_OUTPUT
 
+          # IAM Role-specific
+          echo "lambda_function_name=$(echo $INPUTS | jq -r '.lambdaFunctionName // \"\"')"      >> $GITHUB_OUTPUT
+          echo "lambda_region=$(echo $INPUTS | jq -r '.lambdaRegion // .awsRegion // \"us-east-1\"')" >> $GITHUB_OUTPUT
+          echo "github_org=$(echo $INPUTS | jq -r '.githubOrg // \"demos-and-pilots\"')"         >> $GITHUB_OUTPUT
+          echo "github_repo_pattern=$(echo $INPUTS | jq -r '.githubRepoPattern // \"*\"')"       >> $GITHUB_OUTPUT
+          echo "github_branch_pattern=$(echo $INPUTS | jq -r '.githubBranchPattern // \"refs/heads/main\"')" >> $GITHUB_OUTPUT
+
       # ── 2. Notificar inicio a Port ───────────────────────────────────────────
       - name: Notificar inicio a Port
         uses: port-labs/port-github-action@v1
@@ -369,32 +376,70 @@ jobs:
             --query 'Stacks[0].StackId' --output text)
           echo "stack_id=${STACK_ID}" >> $GITHUB_OUTPUT
 
+      - name: Crear IAM Role para despliegue de Lambda (OIDC)
+        if: steps.ctx.outputs.resource_type == 'IAMRole'
+        id: deploy_iam
+        run: |
+          STACK_NAME="${{ steps.ctx.outputs.project_name }}-${{ steps.ctx.outputs.environment }}-lambda-deploy-role"
+          echo "stack_name=${STACK_NAME}" >> $GITHUB_OUTPUT
+
+          aws cloudformation deploy \
+            --template-file cloudformation/iam/iam_lambda_deploy_role.yml \
+            --stack-name "${STACK_NAME}" \
+            --region "${{ steps.ctx.outputs.region }}" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              ProjectName="${{ steps.ctx.outputs.project_name }}" \
+              Environment="${{ steps.ctx.outputs.environment }}" \
+              LambdaFunctionName="${{ steps.ctx.outputs.lambda_function_name }}" \
+              LambdaRegion="${{ steps.ctx.outputs.lambda_region }}" \
+              GitHubOrg="${{ steps.ctx.outputs.github_org }}" \
+              GitHubRepoPattern="${{ steps.ctx.outputs.github_repo_pattern }}" \
+              GitHubBranchPattern="${{ steps.ctx.outputs.github_branch_pattern }}" \
+              OwnerTeam="${{ steps.ctx.outputs.owner_team }}" \
+              CostCenter="${{ steps.ctx.outputs.cost_center }}" \
+            --tags \
+              Project="${{ steps.ctx.outputs.project_name }}" \
+              Environment="${{ steps.ctx.outputs.environment }}" \
+              OwnerTeam="${{ steps.ctx.outputs.owner_team }}" \
+              CostCenter="${{ steps.ctx.outputs.cost_center }}" \
+              ManagedBy="port-golden-path"
+
+          STACK_ID=$(aws cloudformation describe-stacks \
+            --stack-name "${STACK_NAME}" \
+            --query 'Stacks[0].StackId' --output text)
+          echo "stack_id=${STACK_ID}" >> $GITHUB_OUTPUT
+
+          # Obtener el ARN del rol creado para mostrarlo en Port
+          ROLE_ARN=$(aws cloudformation describe-stacks \
+            --stack-name "${STACK_NAME}" \
+            --query 'Stacks[0].Outputs[?OutputKey==`RoleArn`].OutputValue' \
+            --output text)
+          echo "role_arn=${ROLE_ARN}" >> $GITHUB_OUTPUT
+
+          ROLE_NAME=$(aws cloudformation describe-stacks \
+            --stack-name "${STACK_NAME}" \
+            --query 'Stacks[0].Outputs[?OutputKey==`RoleName`].OutputValue' \
+            --output text)
+          echo "role_name=${ROLE_NAME}" >> $GITHUB_OUTPUT
+
+          
       # ── 6. Resolver stack_name y stack_id para el paso de notificación ───────
       - name: Resolver outputs del deploy
         id: resolve
         if: always()
         run: |
-          # Seleccionar el stack_name y stack_id del step que corrió
-          if [ -n "${{ steps.deploy_vpc.outputs.stack_name }}" ]; then
-            STACK_NAME="${{ steps.deploy_vpc.outputs.stack_name }}"
-            STACK_ID="${{ steps.deploy_vpc.outputs.stack_id }}"
-          elif [ -n "${{ steps.deploy_dynamodb.outputs.stack_name }}" ]; then
-            STACK_NAME="${{ steps.deploy_dynamodb.outputs.stack_name }}"
-            STACK_ID="${{ steps.deploy_dynamodb.outputs.stack_id }}"
-          elif [ -n "${{ steps.deploy_lambda.outputs.stack_name }}" ]; then
-            STACK_NAME="${{ steps.deploy_lambda.outputs.stack_name }}"
-            STACK_ID="${{ steps.deploy_lambda.outputs.stack_id }}"
-          elif [ -n "${{ steps.deploy_s3.outputs.stack_name }}" ]; then
-            STACK_NAME="${{ steps.deploy_s3.outputs.stack_name }}"
-            STACK_ID="${{ steps.deploy_s3.outputs.stack_id }}"
-          elif [ -n "${{ steps.deploy_complete.outputs.stack_name }}" ]; then
-            STACK_NAME="${{ steps.deploy_complete.outputs.stack_name }}"
-            STACK_ID="${{ steps.deploy_complete.outputs.stack_id }}"
-          fi
-          
+          # Tomar el stack_name del step que corrió
+          STACK_NAME="${{ steps.deploy_vpc.outputs.stack_name }}${{ steps.deploy_dynamodb.outputs.stack_name }}${{ steps.deploy_lambda.outputs.stack_name }}${{ steps.deploy_iam.outputs.stack_name }}${{ steps.deploy_complete.outputs.stack_name }}"
+          STACK_ID="${{ steps.deploy_vpc.outputs.stack_id }}${{ steps.deploy_dynamodb.outputs.stack_id }}${{ steps.deploy_lambda.outputs.stack_id }}${{ steps.deploy_iam.outputs.stack_id }}${{ steps.deploy_complete.outputs.stack_id }}"
           echo "stack_name=${STACK_NAME}" >> $GITHUB_OUTPUT
-          echo "stack_id=${STACK_ID}" >> $GITHUB_OUTPUT
-          CONSOLE_URL="https://${{ steps.ctx.outputs.region }}.console.aws.amazon.com/cloudformation/home?region=${{ steps.ctx.outputs.region }}#/stacks/stackinfo?stackId=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${STACK_ID}'))")"
+          echo "stack_id=${STACK_ID}"     >> $GITHUB_OUTPUT
+          # Para IAM Role: capturar ARN del rol creado
+          ROLE_ARN="${{ steps.deploy_iam.outputs.role_arn }}"
+          ROLE_NAME="${{ steps.deploy_iam.outputs.role_name }}"
+          echo "role_arn=${ROLE_ARN}"   >> $GITHUB_OUTPUT
+          echo "role_name=${ROLE_NAME}" >> $GITHUB_OUTPUT
+          CONSOLE_URL="https://${{ steps.ctx.outputs.region }}.console.aws.amazon.com/cloudformation/home?region=${{ steps.ctx.outputs.region }}#/stacks/stackinfo?stackId=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${STACK_ID}")"
           echo "console_url=${CONSOLE_URL}" >> $GITHUB_OUTPUT
 
       # ── 7. Notificar éxito a Port + actualizar catálogo ──────────────────────
@@ -427,7 +472,9 @@ jobs:
                 "costCenter":    "${{ steps.ctx.outputs.cost_center }}",
                 "consoleUrl":    "${{ steps.resolve.outputs.console_url }}",
                 "githubRunUrl":  "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-                "createdAt":     "${{ github.run_started_at }}"
+                "createdAt":     "${{ github.run_started_at }}",
+                "iamRoleArn":    "${{ steps.resolve.outputs.role_arn }}",
+                "iamRoleName":   "${{ steps.resolve.outputs.role_name }}"
               }
             }
 

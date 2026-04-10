@@ -1,0 +1,191 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Golden Path — IAM Role para despliegue de Lambda desde GitHub Actions via OIDC.
+  Incluye: Trust Relationship con el OIDC provider de GitHub, política administrada
+  AWSCodeDeployRoleForLambda y permiso inline de UpdateFunctionCode sobre la Lambda
+  específica. Sin access keys estáticas — autenticación via tokens temporales OIDC.
+  Generado por Port Platform Engineering.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PARÁMETROS
+# ─────────────────────────────────────────────────────────────────────────────
+Parameters:
+
+  ProjectName:
+    Type: String
+    MinLength: 3
+    MaxLength: 28
+    AllowedPattern: "^[a-z][a-z0-9-]+$"
+    Description: Prefijo del nombre del rol
+
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+    Default: dev
+
+  LambdaFunctionName:
+    Type: String
+    Description: Nombre exacto de la Lambda Function a la que este rol puede desplegar código
+    MinLength: 1
+    MaxLength: 64
+
+  LambdaRegion:
+    Type: String
+    Description: Región donde está desplegada la Lambda Function
+    Default: us-east-1
+
+  GitHubOrg:
+    Type: String
+    Description: Nombre de la organización o usuario de GitHub
+    Default: demos-and-pilots
+
+  GitHubRepoPattern:
+    Type: String
+    Description: "Patrón de repos autorizados. Usar * para todos los repos de la org."
+    Default: "*"
+
+  GitHubBranchPattern:
+    Type: String
+    Description: "Patrón de branches autorizados. Ej: refs/heads/main"
+    Default: refs/heads/main
+
+  OwnerTeam:
+    Type: String
+    Default: platform
+
+  CostCenter:
+    Type: String
+    Default: N/A
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RESOURCES
+# ─────────────────────────────────────────────────────────────────────────────
+Resources:
+
+  # ── IAM Role con Trust Relationship para GitHub Actions OIDC ─────────────
+  LambdaDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${Environment}-lambda-deploy-role"
+      Description: !Sub >
+        Permite que GitHub Actions (OIDC) despliegue código sobre la Lambda
+        ${LambdaFunctionName} en el entorno ${Environment}.
+        Repo: ${GitHubOrg}/${GitHubRepoPattern} | Branch: ${GitHubBranchPattern}
+
+      # ── Trust Relationship — GitHub Actions via OIDC ─────────────────────────
+      # Permite que el workflow de GitHub asuma este rol sin access keys estáticas.
+      # El OIDC provider debe estar registrado previamente en la cuenta AWS:
+      #   aws iam create-open-id-connect-provider \
+      #     --url https://token.actions.githubusercontent.com \
+      #     --client-id-list sts.amazonaws.com
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              # Verifica que el token fue emitido para AWS STS
+              StringEquals:
+                "token.actions.githubusercontent.com:aud": sts.amazonaws.com
+              # Restringe a la org/repo/branch configurados
+              StringLike:
+                "token.actions.githubusercontent.com:sub": !Sub "repo:${GitHubOrg}/${GitHubRepoPattern}:ref:${GitHubBranchPattern}"
+
+      # ── Política administrada — CodeDeploy para Lambda ────────────────────────
+      # Incluye permisos para: CreateDeployment, GetDeployment, ListDeployments,
+      # CreateDeploymentConfig, GetDeploymentConfig, etc.
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCodeDeployRoleForLambda
+
+      # ── Política inline — UpdateFunctionCode sobre la Lambda específica ────────
+      # Principio de mínimo privilegio: solo puede actualizar el código de
+      # la Lambda indicada, no crear ni borrar funciones.
+      Policies:
+        - PolicyName: !Sub "${ProjectName}-${Environment}-lambda-deploy-inline"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AllowLambdaDeploy
+                Effect: Allow
+                Action:
+                  - lambda:UpdateFunctionCode
+                  - lambda:GetFunction
+                Resource: !Sub "arn:aws:lambda:${LambdaRegion}:${AWS::AccountId}:function:${LambdaFunctionName}"
+
+              # Permiso adicional para publicar nuevas versiones (necesario para
+              # despliegues Blue/Green con CodeDeploy + Lambda aliases)
+              - Sid: AllowPublishVersion
+                Effect: Allow
+                Action:
+                  - lambda:PublishVersion
+                  - lambda:UpdateAlias
+                  - lambda:GetAlias
+                  - lambda:ListAliases
+                Resource: !Sub "arn:aws:lambda:${LambdaRegion}:${AWS::AccountId}:function:${LambdaFunctionName}*"
+
+              # Permiso para leer el bucket S3 de código de la Lambda
+              # (necesario si el workflow sube el zip antes de actualizar)
+              - Sid: AllowS3ReadForCode
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: !Sub "arn:aws:s3:::*-${Environment}-*/*"
+
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-lambda-deploy-role"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: LambdaTarget
+          Value: !Ref LambdaFunctionName
+        - Key: GitHubOrg
+          Value: !Ref GitHubOrg
+        - Key: GitHubRepo
+          Value: !Ref GitHubRepoPattern
+        - Key: OwnerTeam
+          Value: !Ref OwnerTeam
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: ManagedBy
+          Value: port-golden-path
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OUTPUTS
+# ─────────────────────────────────────────────────────────────────────────────
+Outputs:
+
+  RoleName:
+    Description: Nombre del IAM Role creado
+    Value: !Ref LambdaDeployRole
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-LambdaDeployRoleName"
+
+  RoleArn:
+    Description: ARN del IAM Role — usar en el workflow de GitHub Actions como role-to-assume
+    Value: !GetAtt LambdaDeployRole.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-LambdaDeployRoleArn"
+
+  TrustSummary:
+    Description: Resumen del Trust Relationship configurado
+    Value: !Sub "GitHub OIDC | Org: ${GitHubOrg} | Repo: ${GitHubRepoPattern} | Branch: ${GitHubBranchPattern}"
+
+  LambdaTarget:
+    Description: Lambda Function autorizada para recibir deploys desde este rol
+    Value: !Sub "arn:aws:lambda:${LambdaRegion}:${AWS::AccountId}:function:${LambdaFunctionName}"
+
+  GitHubWorkflowSnippet:
+    Description: >
+      Fragmento YAML para pegar en el workflow de GitHub Actions que usará este rol.
+      Copiar el valor de RoleArn en el campo role-to-assume.
+    Value: !Sub |
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${LambdaDeployRole.Arn}
+          aws-region: ${LambdaRegion}
