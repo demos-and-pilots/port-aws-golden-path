@@ -109,7 +109,7 @@ jobs:
             "/orgs/$GITHUB_ORG/repos" \
             -f name="${{ inputs.repo_name }}" \
             -f description="${{ inputs.description }}" \
-            -f visibility="private" \
+            -f visibility="public" \
             -F has_issues=true \
             -F has_projects=false \
             -F has_wiki=false \
@@ -123,7 +123,7 @@ jobs:
             -f owner="$GITHUB_ORG" \
             -f name="${{ inputs.repo_name }}" \
             -f description="${{ inputs.description }}" \
-            -F private=true 2>/dev/null || true
+            -F private=false 2>/dev/null || true
 
           echo "repo_url=$REPO_URL" >> $GITHUB_OUTPUT
           sleep 3  # Esperar a que GitHub cree los archivos iniciales
@@ -193,7 +193,7 @@ jobs:
               "properties": {
                 "repoUrl": "${{ steps.create-repo.outputs.repo_url }}",
                 "defaultBranch": "main",
-                "visibility": "private",
+                "visibility": "public",
                 "language": "${{ inputs.language }}",
                 "branchProtection": true,
                 "requiredReviewers": ${{ inputs.required_reviewers }},
