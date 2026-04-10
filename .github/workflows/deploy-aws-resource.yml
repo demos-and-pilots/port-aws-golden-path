@@ -35,6 +35,13 @@ jobs:
           echo "owner_team=$(echo $INPUTS | jq -r '.ownerTeam')"            >> $GITHUB_OUTPUT
           echo "cost_center=$(echo $INPUTS | jq -r '.costCenter // "Unassigned"')" >> $GITHUB_OUTPUT
 
+          # IAM Role-specific
+          echo "lambda_function_name=$(echo $INPUTS | jq -r '.lambdaFunctionName // \"\"')"      >> $GITHUB_OUTPUT
+          echo "lambda_region=$(echo $INPUTS | jq -r '.lambdaRegion // .awsRegion // \"us-east-1\"')" >> $GITHUB_OUTPUT
+          echo "github_org=$(echo $INPUTS | jq -r '.githubOrg // \"demos-and-pilots\"')"         >> $GITHUB_OUTPUT
+          echo "github_repo_pattern=$(echo $INPUTS | jq -r '.githubRepoPattern // \"*\"')"       >> $GITHUB_OUTPUT
+          echo "github_branch_pattern=$(echo $INPUTS | jq -r '.githubBranchPattern // \"refs/heads/main\"')" >> $GITHUB_OUTPUT
+
           # VPC-specific
           echo "vpc_cidr=$(echo $INPUTS | jq -r '.vpcCidr // "10.0.0.0/16"')"          >> $GITHUB_OUTPUT
           echo "az1=$(echo $INPUTS | jq -r '.availabilityZone1 // "us-east-1a"')"       >> $GITHUB_OUTPUT
@@ -78,13 +85,6 @@ jobs:
           echo "enable_lifecycle_expiration=$(echo $INPUTS | jq -r '.enableLifecycleExpiration // false')" >> $GITHUB_OUTPUT
           echo "expiration_days=$(echo $INPUTS | jq -r '.expirationInDays // 30')"                          >> $GITHUB_OUTPUT
           echo "noncurrent_expiration_days=$(echo $INPUTS | jq -r '.noncurrentVersionExpirationInDays // 30')" >> $GITHUB_OUTPUT
-
-          # IAM Role-specific
-          echo "lambda_function_name=$(echo $INPUTS | jq -r '.lambdaFunctionName // \"\"')"      >> $GITHUB_OUTPUT
-          echo "lambda_region=$(echo $INPUTS | jq -r '.lambdaRegion // .awsRegion // \"us-east-1\"')" >> $GITHUB_OUTPUT
-          echo "github_org=$(echo $INPUTS | jq -r '.githubOrg // \"demos-and-pilots\"')"         >> $GITHUB_OUTPUT
-          echo "github_repo_pattern=$(echo $INPUTS | jq -r '.githubRepoPattern // \"*\"')"       >> $GITHUB_OUTPUT
-          echo "github_branch_pattern=$(echo $INPUTS | jq -r '.githubBranchPattern // \"refs/heads/main\"')" >> $GITHUB_OUTPUT
 
       # ── 2. Notificar inicio a Port ───────────────────────────────────────────
       - name: Notificar inicio a Port

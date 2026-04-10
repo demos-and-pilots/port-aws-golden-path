@@ -1,0 +1,133 @@
+{
+  "identifier": "deploy_aws_iam_lambda_role",
+  "title": "Crear IAM Role para despliegue de Lambda (GitHub Actions OIDC)",
+  "icon": "AWS",
+  "description": "Crea un IAM Role con Trust Relationship para GitHub Actions via OIDC, política AWSCodeDeployRoleForLambda adjunta y permiso inline de UpdateFunctionCode sobre una Lambda específica. Permite que pipelines de CI/CD actualicen el código de la Lambda sin usar access keys estáticas.",
+  "trigger": {
+    "type": "self-service",
+    "operation": "CREATE",
+    "userInputs": {
+      "properties": {
+
+        "awsAccountId": {
+          "type": "string",
+          "title": "AWS Account ID",
+          "description": "ID de la cuenta AWS donde se creará el rol (12 dígitos)",
+          "pattern": "^[0-9]{12}$",
+           "default": "975050262842"
+        },
+
+        "awsRegion": {
+          "type": "string",
+          "title": "Región AWS",
+          "enum": [
+            "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+            "eu-west-1", "eu-west-2", "eu-central-1",
+            "ap-southeast-1", "ap-southeast-2", "sa-east-1"
+          ],
+          "default": "us-east-1"
+        },
+
+        "environment": {
+          "type": "string",
+          "title": "Entorno",
+          "enum": ["dev", "staging", "prod"],
+          "default": "dev"
+        },
+
+        "projectName": {
+          "type": "string",
+          "title": "Nombre del proyecto",
+          "description": "Se usa como prefijo del nombre del rol: {projectName}-{environment}-lambda-deploy-role",
+          "pattern": "^[a-z][a-z0-9-]{2,28}$"
+        },
+
+        "lambdaFunctionName": {
+          "type": "string",
+          "title": "Nombre de la función Lambda",
+          "description": "Nombre exacto de la Lambda Function a la que este rol tendrá permiso de despliegue. Ej: mi-proyecto-dev"
+        },
+
+        "lambdaRegion": {
+          "type": "string",
+          "title": "Región de la Lambda Function",
+          "description": "Región donde está desplegada la Lambda (puede diferir de la región donde se crea el rol)",
+          "enum": [
+            "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+            "eu-west-1", "eu-west-2", "eu-central-1",
+            "ap-southeast-1", "ap-southeast-2", "sa-east-1"
+          ],
+          "default": "us-east-1"
+        },
+
+        "githubOrg": {
+          "type": "string",
+          "title": "Organización / usuario de GitHub",
+          "description": "Nombre exacto de la org o usuario en GitHub. Ej: demos-and-pilots",
+          "default": "demos-and-pilots"
+        },
+
+        "githubRepoPattern": {
+          "type": "string",
+          "title": "Patrón de repositorios permitidos",
+          "description": "Repos de GitHub autorizados a asumir este rol. Usa * para todos los repos de la org. Ej: my-lambda-repo o * para todos.",
+          "default": "*"
+        },
+
+        "githubBranchPattern": {
+          "type": "string",
+          "title": "Patrón de branches permitidos",
+          "description": "Branches autorizados. Ej: refs/heads/main  o  refs/heads/*  para cualquier branch.",
+          "default": "refs/heads/main"
+        },
+
+        "ownerTeam": {
+          "type": "string",
+          "title": "Equipo responsable"
+        },
+
+        "costCenter": {
+          "type": "string",
+          "title": "Centro de costos"
+        }
+      },
+      "required": [
+        "awsAccountId", "awsRegion", "environment", "projectName",
+        "lambdaFunctionName", "lambdaRegion", "githubOrg", "ownerTeam"
+      ]
+    }
+  },
+   "invocationMethod": {
+    "type": "INTEGRATION_ACTION",
+    "installationId": "github-port-demos",
+    "integrationActionType": "dispatch_workflow",
+    "integrationActionExecutionProperties": {
+      "org": "demos-and-pilots",
+      "repo": "port-aws-golden-path",
+      "workflow": "deploy-aws-resource.yml",
+      "workflowInputs": {
+        "port_context": {
+          "runId": "{{ .run.id }}",
+          "blueprint": "aws_resource",
+          "resourceType": "IAMRole",
+          "inputs": {
+            "awsAccountId": "{{ .inputs.awsAccountId }}",
+            "awsRegion": "{{ .inputs.awsRegion }}",
+            "environment": "{{ .inputs.environment }}",
+            "projectName": "{{ .inputs.projectName }}",
+            "lambdaFunctionName": "{{ .inputs.lambdaFunctionName }}",
+            "lambdaRegion": "{{ .inputs.lambdaRegion }}",
+            "githubOrg": "{{ .inputs.githubOrg }}",
+            "githubRepoPattern": "{{ .inputs.githubRepoPattern }}",
+            "githubBranchPattern": "{{ .inputs.githubBranchPattern }}",
+            "ownerTeam": "{{ .inputs.ownerTeam }}",
+            "costCenter": "{{ .inputs.costCenter }}"
+          }
+        }
+      },
+      "reportWorkflowStatus": true
+    }
+  },
+  "allowAnyoneToViewRuns": true,
+  "requiredApproval": false
+}
