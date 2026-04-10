@@ -112,29 +112,29 @@ jobs:
             -f description="${{ inputs.description }}" \
             -F private=false \
             --jq '.html_url')
+          echo "repo_url=$REPO_URL" >> $GITHUB_OUTPUT
 
-          # Aplicar configuración adicional del repo
+      - name: Esperar a que el repositorio y rama main estén disponibles
+        run: |
+          for i in $(seq 1 12); do
+            if gh api "repos/$GITHUB_ORG/${{ inputs.repo_name }}/branches/main" 2>/dev/null | grep -q '"name"'; then
+              echo "Repositorio y rama main disponibles."
+              exit 0
+            fi
+            echo "Esperando... intento $i/12"
+            sleep 5
+          done
+          echo "ERROR: El repositorio no estuvo disponible después de 60 segundos."
+          exit 1
+
+      - name: Configurar propiedades del repositorio
+        run: |
           gh api \
             --method PATCH \
             "/repos/$GITHUB_ORG/${{ inputs.repo_name }}" \
             -F has_issues=true \
             -F has_projects=false \
             -F has_wiki=false
-
-          echo "repo_url=$REPO_URL" >> $GITHUB_OUTPUT
-
-      - name: Esperar a que la rama main esté disponible
-        run: |
-          for i in $(seq 1 12); do
-            if gh api "repos/$GITHUB_ORG/${{ inputs.repo_name }}/branches/main" 2>/dev/null | grep -q '"name"'; then
-              echo "Rama main disponible."
-              exit 0
-            fi
-            echo "Esperando rama main... intento $i/12"
-            sleep 5
-          done
-          echo "ERROR: La rama main no estuvo disponible después de 60 segundos."
-          exit 1
 
       - name: Configurar branch protection en main
         run: |
