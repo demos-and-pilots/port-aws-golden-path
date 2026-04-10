@@ -32,8 +32,16 @@ jobs:
           echo "region=$(echo $INPUTS | jq -r '.awsRegion')"                >> $GITHUB_OUTPUT
           echo "environment=$(echo $INPUTS | jq -r '.environment')"         >> $GITHUB_OUTPUT
           echo "project_name=$(echo $INPUTS | jq -r '.projectName')"        >> $GITHUB_OUTPUT
-          echo "owner_team=$(echo $INPUTS | jq -r '.ownerTeam')"            >> $GITHUB_OUTPUT
-          echo "cost_center=$(echo $INPUTS | jq -r '.costCenter // "Unassigned"')" >> $GITHUB_OUTPUT
+          
+          # Sanitize owner_team and cost_center for IAM tag compatibility
+          # IAM tags must match regex: [\p{L}\p{Z}\p{N}_.:/=+\-@]*
+          OWNER_TEAM_RAW=$(echo $INPUTS | jq -r '.ownerTeam')
+          OWNER_TEAM_SANITIZED=$(echo "$OWNER_TEAM_RAW" | sed 's/[^a-zA-Z0-9 _.:\/=+-@[:space:]]//g' | xargs)
+          echo "owner_team=$OWNER_TEAM_SANITIZED" >> $GITHUB_OUTPUT
+          
+          COST_CENTER_RAW=$(echo $INPUTS | jq -r '.costCenter // "Unassigned"')
+          COST_CENTER_SANITIZED=$(echo "$COST_CENTER_RAW" | sed 's/[^a-zA-Z0-9 _.:\/=+-@[:space:]]//g' | xargs)
+          echo "cost_center=$COST_CENTER_SANITIZED" >> $GITHUB_OUTPUT
 
           # IAM Role-specific
           echo "lambda_function_name=$(echo $INPUTS | jq -r '.lambdaFunctionName // ""')"      >> $GITHUB_OUTPUT
