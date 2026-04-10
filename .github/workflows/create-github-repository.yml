@@ -91,19 +91,26 @@ jobs:
             exit 1
           fi
 
-      - name: Crear repositorio
+      - name: Seleccionar template según lenguaje
+        id: select-template
+        run: |
+          case "${{ inputs.language }}" in
+            python3.12) echo "template=lambda-python-template" >> $GITHUB_OUTPUT ;;
+            nodejs20.x) echo "template=lambda-nodejs-template" >> $GITHUB_OUTPUT ;;
+            java21)     echo "template=lambda-java-template"   >> $GITHUB_OUTPUT ;;
+            *)          echo "template=lambda-python-template" >> $GITHUB_OUTPUT ;;
+          esac
+
+      - name: Crear repositorio desde template
         id: create-repo
         run: |
           REPO_URL=$(gh api \
             --method POST \
-            "/orgs/$GITHUB_ORG/repos" \
+            "/repos/$GITHUB_ORG/${{ steps.select-template.outputs.template }}/generate" \
+            -f owner="$GITHUB_ORG" \
             -f name="${{ inputs.repo_name }}" \
             -f description="${{ inputs.description }}" \
-            -f visibility="public" \
-            -F has_issues=true \
-            -F has_projects=false \
-            -F has_wiki=false \
-            -F auto_init=true \
+            -F private=false \
             --jq '.html_url')
           echo "repo_url=$REPO_URL" >> $GITHUB_OUTPUT
 
@@ -160,6 +167,20 @@ jobs:
             -f topics[]="${{ inputs.squad }}" \
             -f topics[]="lambda" \
             -f topics[]="${{ inputs.language }}"
+
+      - name: Eliminar workflow CD si no fue solicitado
+        if: ${{ inputs.include_cd_pipeline == false }}
+        run: |
+          SHA=$(gh api \
+            "repos/$GITHUB_ORG/${{ inputs.repo_name }}/contents/.github/workflows/cd.yml" \
+            --jq '.sha' 2>/dev/null || echo "")
+          if [ -n "$SHA" ]; then
+            gh api \
+              --method DELETE \
+              "repos/$GITHUB_ORG/${{ inputs.repo_name }}/contents/.github/workflows/cd.yml" \
+              -f message="chore: remove CD pipeline (not requested)" \
+              -f sha="$SHA"
+          fi
 
       - name: Crear entidad en Port - Repositorio
         id: create-port-entity
