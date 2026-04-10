@@ -83,9 +83,10 @@ jobs:
 
       - name: Verificar que el nombre no existe
         run: |
-          STATUS=$(gh api "repos/$GITHUB_ORG/${{ inputs.repo_name }}" \
-            --jq '.name' 2>/dev/null || echo "NOT_FOUND")
-          if [ "$STATUS" != "NOT_FOUND" ]; then
+          HTTP_CODE=$(gh api --include \
+            "repos/$GITHUB_ORG/${{ inputs.repo_name }}" 2>/dev/null \
+            | head -n 1 | awk '{print $2}')
+          if [ "$HTTP_CODE" = "200" ]; then
             echo "ERROR: El repositorio ${{ inputs.repo_name }} ya existe en la organización."
             exit 1
           fi
