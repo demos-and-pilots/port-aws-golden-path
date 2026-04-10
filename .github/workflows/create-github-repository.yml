@@ -57,7 +57,7 @@ jobs:
   create-repository:
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ secrets.GH_ORG_TOKEN }}
+      GH_TOKEN: ${{ secrets.GH_PAT }}
       GITHUB_ORG: ${{ secrets.GITHUB_ORG }}
       PORT_CLIENT_ID: ${{ secrets.PORT_CLIENT_ID }}
       PORT_CLIENT_SECRET: ${{ secrets.PORT_CLIENT_SECRET }}
