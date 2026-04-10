@@ -163,10 +163,11 @@ jobs:
           gh api \
             --method PUT \
             "/repos/$GITHUB_ORG/${{ inputs.repo_name }}/topics" \
-            -f topics[]="${{ inputs.data_classification }}" \
-            -f topics[]="${{ inputs.squad }}" \
-            -f topics[]="lambda" \
-            -f topics[]="${{ inputs.language }}"
+            --input - <<EOF
+          {
+            "names": ["${{ inputs.data_classification }}", "${{ inputs.squad }}", "lambda", "${{ inputs.language }}"]
+          }
+          EOF
 
       - name: Eliminar workflow CD si no fue solicitado
         if: ${{ inputs.include_cd_pipeline == false }}
