@@ -134,26 +134,6 @@ Resources:
                   - s3:GetObjectVersion
                 Resource: !Sub "arn:aws:s3:::*-${Environment}-*/*"
 
-      Tags:
-        - Key: Name
-          Value: !Sub "${ProjectName}-${Environment}-lambda-deploy-role"
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: LambdaTarget
-          Value: !Ref LambdaFunctionName
-        - Key: GitHubOrg
-          Value: !Ref GitHubOrg
-        - Key: GitHubRepo
-          Value: !Ref GitHubRepoPattern
-        - Key: OwnerTeam
-          Value: !Ref OwnerTeam
-        - Key: CostCenter
-          Value: !Ref CostCenter
-        - Key: ManagedBy
-          Value: port-golden-path
-
 # ─────────────────────────────────────────────────────────────────────────────
 # OUTPUTS
 # ─────────────────────────────────────────────────────────────────────────────
