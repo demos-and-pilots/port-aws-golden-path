@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GH_PAT }}
-      GITHUB_ORG: ${{ secrets.GITHUB_ORG }}
+      GITHUB_ORG: ${{ secrets.GH_NAME_ORG }}
       PORT_CLIENT_ID: ${{ secrets.PORT_CLIENT_ID }}
       PORT_CLIENT_SECRET: ${{ secrets.PORT_CLIENT_SECRET }}
 
