@@ -165,7 +165,7 @@ jobs:
             "/repos/$GITHUB_ORG/${{ inputs.repo_name }}/topics" \
             --input - <<EOF
           {
-            "names": ["${{ inputs.data_classification }}", "${{ inputs.squad }}", "lambda", "${{ inputs.language }}"]
+            "names": ["${{ inputs.data_classification }}", "lambda", "${{ inputs.language }}"]
           }
           EOF
 
