@@ -1,4 +1,4 @@
-name: deploy-aws-resource
+name: "[Port] Crear recurso en AWS (VPC, DynamoDB, Lambda, S3"
 on:
   workflow_dispatch:
     inputs:
