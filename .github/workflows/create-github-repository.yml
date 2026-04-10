@@ -158,17 +158,6 @@ jobs:
             -f message="chore: add CODEOWNERS [skip ci]" \
             -f content="$(echo -n "* @$GITHUB_ORG/${{ inputs.squad }}" | base64)"
 
-      - name: Agregar topic de clasificación de datos
-        run: |
-          gh api \
-            --method PUT \
-            "/repos/$GITHUB_ORG/${{ inputs.repo_name }}/topics" \
-            --input - <<EOF
-          {
-            "names": ["${{ inputs.data_classification }}", "lambda", "${{ inputs.language }}"]
-          }
-          EOF
-
       - name: Eliminar workflow CD si no fue solicitado
         if: ${{ inputs.include_cd_pipeline == false }}
         run: |
