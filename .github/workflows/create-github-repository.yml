@@ -106,27 +106,35 @@ jobs:
         run: |
           REPO_URL=$(gh api \
             --method POST \
-            "/orgs/$GITHUB_ORG/repos" \
-            -f name="${{ inputs.repo_name }}" \
-            -f description="${{ inputs.description }}" \
-            -f visibility="public" \
-            -F has_issues=true \
-            -F has_projects=false \
-            -F has_wiki=false \
-            -F auto_init=false \
-            --jq '.html_url')
-
-          # Copiar template al nuevo repo
-          gh api \
-            --method POST \
             "/repos/$GITHUB_ORG/${{ steps.select-template.outputs.template }}/generate" \
             -f owner="$GITHUB_ORG" \
             -f name="${{ inputs.repo_name }}" \
             -f description="${{ inputs.description }}" \
-            -F private=false 2>/dev/null || true
+            -F private=false \
+            --jq '.html_url')
+
+          # Aplicar configuración adicional del repo
+          gh api \
+            --method PATCH \
+            "/repos/$GITHUB_ORG/${{ inputs.repo_name }}" \
+            -F has_issues=true \
+            -F has_projects=false \
+            -F has_wiki=false
 
           echo "repo_url=$REPO_URL" >> $GITHUB_OUTPUT
-          sleep 3  # Esperar a que GitHub cree los archivos iniciales
+
+      - name: Esperar a que la rama main esté disponible
+        run: |
+          for i in $(seq 1 12); do
+            if gh api "repos/$GITHUB_ORG/${{ inputs.repo_name }}/branches/main" 2>/dev/null | grep -q '"name"'; then
+              echo "Rama main disponible."
+              exit 0
+            fi
+            echo "Esperando rama main... intento $i/12"
+            sleep 5
+          done
+          echo "ERROR: La rama main no estuvo disponible después de 60 segundos."
+          exit 1
 
       - name: Configurar branch protection en main
         run: |
