@@ -1,8 +1,8 @@
 name: "[Port] Sync Lambda entities"
 
 on:
-  schedule:
-    - cron: "*/15 * * * *"   # Cada 15 minutos
+  #schedule:
+  #  - cron: "*/15 * * * *"   # Cada 15 minutos
   workflow_dispatch:          # Ejecución manual
 
 permissions:
